@@ -548,7 +548,8 @@ static void saveCameraParams(Settings& s, Size& imageSize, Mat& cameraMatrix, Ma
 	}
 }
 
-bool runCalibrationAndSave(Settings& s, Size imageSize, Mat&  cameraMatrix, Mat& distCoeffs, vector<vector<Point2f> > imagePoints)
+bool runCalibrationAndSave(Settings& s, Size imageSize, Mat&  cameraMatrix,
+	Mat& distCoeffs, vector<vector<Point2f> > imagePoints)
 {
 	vector<Mat> rvecs, tvecs;
 	vector<float> reprojErrs;
@@ -558,7 +559,7 @@ bool runCalibrationAndSave(Settings& s, Size imageSize, Mat&  cameraMatrix, Mat&
 		reprojErrs, totalAvgErr);
 	cout << (ok ? "Calibration succeeded" : "Calibration failed")
 		<< ". avg re projection error = " << totalAvgErr;
-
+	
 	if (ok)
 		saveCameraParams(s, imageSize, cameraMatrix, distCoeffs, rvecs, tvecs, reprojErrs,
 		imagePoints, totalAvgErr);
