@@ -11,7 +11,8 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Calibra.cpp" />
+    <ClCompile Include="CalibraOpenCV.cpp" />
+    <ClCompile Include="CalibraPrak.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{FBDF733B-E960-447C-9A9D-40A299CB095E}</ProjectGuid>
