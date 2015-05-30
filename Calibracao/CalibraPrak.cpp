@@ -119,48 +119,81 @@ void desenhaLinha(Mat aux, Point2d a, Point2d b, Scalar color){
 	line(aux, a, b, color, 1, 8);
 }
 
+void imprimeMat3xn(Mat m, int s){
+	cout << "[" << endl;
+	for (int j = 0; j < s; j++){
+		cout << " " << m.at<double>(0, j) << ", " << m.at<double>(1, j) << ", " << m.at<double>(2, j) << endl;
+	}
+	cout << "]" << endl;
+}
+
 void desenhaGrid(Mat img, vector<Point2d> pontosCanto, int id){
-	/*for (int i = 0; i < 4; i++){
-		int x = pontosDoCanto[id][i].x, y = pontosDoCanto[id][i].y;
-		desenhaCruz(img, x, y, Scalar(0, 0, 255));
-	}*/
-	//marca os pontos dos lados da figura quadrilatera
-	vector<vector<Point2d>> pontosBorda;
-	for (int i = 0; i < 4; i++){
-		int quant = (i % 2 == 0) ? quantPontosControleWidth : quantPontosControleHeight;
-		float delta = norm(pontosCanto[i == 3 ? 0: i + 1] - pontosCanto[i]) / (float)quant;
-
-		Point2d direcao = pontosCanto[i == 3 ? 0 : i + 1] - pontosCanto[i];
-		direcao *= 1 / cv::norm(direcao);
-		Point2d p = pontosCanto[i];
-
-		vector<Point2d> pontosLado;
-		for (int j = 0; j < quant - 1; j++){
-			p += direcao*delta;
-			desenhaCruz(img, p.x, p.y, Scalar(0, 255, 0));
-			pontosLado.push_back(p);
-		}
-		pontosBorda.push_back(pontosLado);
-	}
-	if (id >= pontosDoGridDeCadaImagem.size()){		
-		pontosDoGridDeCadaImagem.push_back(pontosBorda);
-	}
-	else
-		pontosDoGridDeCadaImagem[id] = pontosBorda;
+	vector<Point2f> planePoints, imagePoints;
 	
-	//desenha linhas do grid
-	//linhas externas
-	for (int i = 0; i < 4; i++){
-		desenhaLinha(img, pontosCanto[i], pontosCanto[i == 3 ? 0 : i + 1], Scalar(255,0,0));
-	}	
-	//linhas verticais
-	for (int i = 0; i < quantPontosControleWidth-1; i++){
-		desenhaLinha(img, pontosBorda[0][i], pontosBorda[2][quantPontosControleWidth - i - 2], Scalar(255, 0, 0));
+	planePoints.push_back(Point2f(0, 0));
+	planePoints.push_back(Point2f(1, 0));
+	planePoints.push_back(Point2f(1, 1));
+	planePoints.push_back(Point2f(0, 1));
+
+	imagePoints.push_back(Point2f(pontosCanto[0].x, pontosCanto[0].y));
+	imagePoints.push_back(Point2f(pontosCanto[1].x, pontosCanto[1].y));
+	imagePoints.push_back(Point2f(pontosCanto[2].x, pontosCanto[2].y));
+	imagePoints.push_back(Point2f(pontosCanto[3].x, pontosCanto[3].y));
+
+	Mat H = findHomography(planePoints, imagePoints);
+
+	cout << "H = " << endl << " " << H << endl << endl;
+		
+	int quantPontosGrid = (quantPontosControleWidth + 1) * (quantPontosControleHeight + 1);
+	Mat pontosGridPlano(3, quantPontosGrid, CV_64F);
+	Mat pontosGridImagem(3, quantPontosGrid, CV_64F);
+	vector<Point2f> pontos2dImagem(quantPontosGrid);
+	vector<Point2f> aux;
+
+	float x, y;
+	
+	//calculando pontos no plano
+	for (int i = 0; i < quantPontosControleWidth + 1; i++){
+		x = (float)i / (float)quantPontosControleWidth;
+		for (int j = 0; j < quantPontosControleHeight + 1; j++){
+			y = (float)j/(float)quantPontosControleHeight;
+			aux.push_back(Point2f(x,y));
+		}		
 	}
+	//cout << "aux = " << endl << " " << aux << endl;
+	//passa do vetor para a matriz
+	
+	for (int j = 0; j < quantPontosGrid; j++){
+		pontosGridPlano.at<double>(0, j) = aux[j].x;
+		pontosGridPlano.at<double>(1, j) = aux[j].y;
+		pontosGridPlano.at<double>(2, j) = 1;	
+	}
+	
+	//multiplica pela homographia	
+	pontosGridImagem = H * pontosGridPlano;		
+
+	//passa para o vetor
+	for (int j = 0; j < quantPontosGrid; j++){
+		//dividir coordenadas homogeneas pelo z
+		pontos2dImagem[j] = Point2f(pontosGridImagem.at<double>(0, j) / pontosGridImagem.at<double>(2,j), 
+			pontosGridImagem.at<double>(1, j) / pontosGridImagem.at<double>(2, j));
+		// coloca cruzes nos pontos mapeados
+		//desenhaCruz(img, pontos2dImagem[j].x, pontos2dImagem[j].y, Scalar(255, 255, 0));
+	}
+
+	// Imprime grid
 	//linhas horizontais
-	for (int i = 0; i < quantPontosControleHeight - 1; i++){
-		desenhaLinha(img, pontosBorda[1][i], pontosBorda[3][quantPontosControleHeight - i - 2], Scalar(255, 0, 0));
+	x = (quantPontosControleHeight + 1)*(quantPontosControleWidth);
+	for (int i = 0; i < quantPontosControleHeight + 1; i++){
+		desenhaLinha(img, pontos2dImagem[i],
+			pontos2dImagem[i+ x], Scalar(255, 0, 0));
 	}
+	//linhas verticais
+	for (int i = 0; i < quantPontosControleWidth + 1; i++){
+		desenhaLinha(img, pontos2dImagem[i*(quantPontosControleHeight + 1)],
+			pontos2dImagem[i*(quantPontosControleHeight + 1) + quantPontosControleHeight], Scalar(255, 0, 0));
+	}
+
 }
 
 void mostraImagem(Mat img, string name){
