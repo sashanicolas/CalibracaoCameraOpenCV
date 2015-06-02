@@ -219,7 +219,7 @@ enum { DETECTION = 0, CAPTURING = 1, CALIBRATED = 2 };
 bool runCalibrationAndSave(Settings& s, Size imageSize, Mat&  cameraMatrix, Mat& distCoeffs,
 	vector<vector<Point2f> > imagePoints);
 
-int main2(int argc, char* argv[])
+int mai2n(int argc, char* argv[])
 {
 	help();
 	//namedWindow("Image View", WINDOW_NORMAL);
@@ -361,7 +361,7 @@ int main2(int argc, char* argv[])
 			mode = CAPTURING;
 			imagePoints.clear();
 		}
-	}
+	}//end for(;;)
 
 	// -----------------------Show the undistorted image for the image list ------------------------
 	if (s.inputType == Settings::IMAGE_LIST && s.showUndistorsed)
