@@ -2,6 +2,22 @@
  * Implementecao Inicial de calibracao de camera com padrao circular
  * Sasha Nicolas
  * Tecgraf PUC Rio
+ * 
+ * READ.ME:
+   1) Passa as imagens em carregaImagens() - hard coded mesmo
+   2) Passa a configuracao dos padroes 
+      quantPontosControleWidth = 9;
+	  quantPontosControleHeight = 6;
+	  distanceCP = 35; //milimetros
+   3) Configura os #define (ativa ou desativa)
+      SELECT_CORNERS_MOUSE - para selecionar com o mouse os 4 cantos de cada imagem
+	  MOSTRA_GRID - para visualizar o grid calculado
+	  MOSTRA_CADA_ROI - para visulizar cada circulo segmentado (nao ativa - eh meio chato)
+	  MOSTRA_POSICAO_PC - para mostra o centro dos pontos de controles (PC)
+      MOSTRA_REPROJECAO - mostra comparacao do da reprojecao
+
+	** tudo tem waitkey(0) - entao passa com evento do teclado
+	** para selecionar os 4 cantos comeca do canto superior esquerdo e vai girando em ordem horaria
  */
 
 #include <iostream>
@@ -20,10 +36,11 @@
 using namespace cv;
 using namespace std;
 
-//DEBUG control
-#define MOSTRA_GRID 0
+//DEBUG e CONTROLE
+#define SELECT_CORNERS_MOUSE 0
+#define MOSTRA_GRID 1
 #define MOSTRA_CADA_ROI 0
-#define MOSTRA_POSICAO_PC 0
+#define MOSTRA_POSICAO_PC 1
 #define MOSTRA_REPROJECAO 1
 
 // variaveis
@@ -56,7 +73,7 @@ static double computeReprojectionErrors(const vector<vector<Point3f> >& objectPo
 	vector<float>& perViewErrors);
 
 int main(){
-	//carregar definicoes
+	//configurar definicoes
 	quantPontosControleWidth = 9;
 	quantPontosControleHeight = 6;
 	distanceCP = 35; //milimetros
@@ -65,8 +82,11 @@ int main(){
 	carregaImagens();
 
 	//Selecionar cantos
-	cantosPredefinidos();
-	//selecionarCantosComMouse();
+	if (SELECT_CORNERS_MOUSE)
+		selecionarCantosComMouse();
+	else
+		cantosPredefinidos();
+	
 	
 	Mat aux;
 	
@@ -107,6 +127,7 @@ int main(){
 	vector<Mat> rvecs, tvecs;	
 	
 	calcPosicoesIdeaisObjeto();
+	cout << "posicao objeto: "<<posicaoPontosDeControleIdealObjeto[0]<<endl;
 	posicaoPontosDeControleIdealObjeto.resize(originalImages.size(), posicaoPontosDeControleIdealObjeto[0]);
 
 	double rms = calibrateCamera(posicaoPontosDeControleIdealObjeto, posicaoPontosDeControleEmCadaImagem, imageSize, cameraMatrix,
@@ -126,6 +147,8 @@ int main(){
 	
 	
 	//outras iteracoes
+	//a fazer
+
 	cout << "\nTerminado.";
 	int a;
 	cin >> a;
@@ -489,7 +512,7 @@ void calcPosicoesIdeaisObjeto(){
 	vector<Point3f> v;
 	for (int i = 0; i < quantPontosControleHeight; ++i)
 	for (int j = 0; j < quantPontosControleWidth; ++j)
-		v.push_back(Point3f(float(j*distanceCP), float(i*distanceCP), 0));
+		v.push_back(Point3f(float(i*distanceCP), float(j*distanceCP), 0));
 	
 	posicaoPontosDeControleIdealObjeto.push_back(v);
 }
@@ -519,13 +542,12 @@ static double computeReprojectionErrors(const vector<vector<Point3f> >& objectPo
 					desenhaCruz(img, imagePoints[i][k*quantPontosControleWidth + j].x,
 						imagePoints[i][k*quantPontosControleWidth + j].y, Scalar(255, 255, 255));
 					desenhaCruz(img, imagePoints2[k*quantPontosControleWidth + j].x, 
-						imagePoints2[k*quantPontosControleWidth + j].y, Scalar(0, 0, 255));
-					mostraImagem(img, "Reprojecao");
-					moveWindow("Reprojecao", 150, 150);
-					waitKey(0);
+						imagePoints2[k*quantPontosControleWidth + j].y, Scalar(0, 0, 255));					
 				}
 			}
-
+			mostraImagem(img, "Reprojecao");
+			moveWindow("Reprojecao", 150, 150);
+			waitKey(0);
 			
 		}
 		err = norm(Mat(imagePoints[i]), Mat(imagePoints2), CV_L2);
