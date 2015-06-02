@@ -10,6 +10,7 @@
 	  quantPontosControleHeight = 6;
 	  distanceCP = 35; //milimetros
    3) Configura os #define (ativa ou desativa)
+      REDUZIR_IMAGENS - se for carregar imagens muito grande, reduz por 4
       SELECT_CORNERS_MOUSE - para selecionar com o mouse os 4 cantos de cada imagem
 	  MOSTRA_GRID - para visualizar o grid calculado
 	  MOSTRA_CADA_ROI - para visulizar cada circulo segmentado (nao ativa - eh meio chato)
@@ -37,6 +38,7 @@ using namespace cv;
 using namespace std;
 
 //DEBUG e CONTROLE
+#define REDUZIR_IMAGENS 0
 #define SELECT_CORNERS_MOUSE 0
 #define MOSTRA_GRID 1
 #define MOSTRA_CADA_ROI 0
@@ -72,10 +74,12 @@ static double computeReprojectionErrors(const vector<vector<Point3f> >& objectPo
 	const Mat& cameraMatrix, const Mat& distCoeffs,
 	vector<float>& perViewErrors);
 
+
 int main(){
+
 	//configurar definicoes
-	quantPontosControleWidth = 9;
-	quantPontosControleHeight = 6;
+	quantPontosControleWidth = 10;
+	quantPontosControleHeight = 7;
 	distanceCP = 35; //milimetros
 
 	// Carregar Imagens
@@ -141,9 +145,15 @@ int main(){
 	totalAvgErr = computeReprojectionErrors(posicaoPontosDeControleIdealObjeto, posicaoPontosDeControleEmCadaImagem,
 		rvecs, tvecs, cameraMatrix, distCoeffs, reprojErrs);
 
-	cout << (ok ? "Calibration succeeded" : "Calibration failed")
-		<< ". avg re projection error = " << totalAvgErr;
 	
+	if (ok){
+		cout << "Calibration succeeded. avg re projection error = " << totalAvgErr;
+		cout << "Camera Matrix (intrinsic) " << cameraMatrix << endl;
+		cout << "Coeficientes de Distorcao " << distCoeffs << endl;
+	}
+	else{
+		cout << "Calibration failed. avg re projection error = " << totalAvgErr;
+	}
 	
 	
 	//outras iteracoes
@@ -158,17 +168,27 @@ int main(){
 
 void carregaImagens(){
 	printf("Carregando Imagens\n");
-	imagePaths.push_back("imagens/circle1.jpg");
+
+	//minhas imagens, celular nexus 5
+	/*imagePaths.push_back("imagens/circle1.jpg");
 	imagePaths.push_back("imagens/circle2.jpg");
 	imagePaths.push_back("imagens/circle3.jpg");
 	imagePaths.push_back("imagens/circle4.jpg");
-	imagePaths.push_back("imagens/circle5.jpg");
+	imagePaths.push_back("imagens/circle5.jpg");*/
+
+	//imagens do Ankur
+	imagePaths.push_back("imagens/img1.bmp");
+	imagePaths.push_back("imagens/img2.bmp");
+	imagePaths.push_back("imagens/img3.bmp");
+	imagePaths.push_back("imagens/img4.bmp");
+	imagePaths.push_back("imagens/img5.bmp");
 
 	for (int i = 0; i < imagePaths.size(); i++){
 		printf(" - Imagem %d...\n",i);
 		Mat aux, aux2;
 		aux = imread(imagePaths[i]);
-		resize(aux, aux, Size(aux.size().width / 4, aux.size().height / 4));
+		if(REDUZIR_IMAGENS)
+			resize(aux, aux, Size(aux.size().width / 4, aux.size().height / 4));
 		originalImages.push_back(aux);
 	}
 	printf("Feito!\n");	
@@ -178,10 +198,17 @@ void cantosPredefinidos(){
 	Mat aux;
 	vector<Point2d> v;
 
-	v.push_back(Point2d(234, 156));
+	//Imagens Sasha
+	/*v.push_back(Point2d(234, 156));
 	v.push_back(Point2d(646, 120));
 	v.push_back(Point2d(665, 454));
-	v.push_back(Point2d(220, 454));
+	v.push_back(Point2d(220, 454));*/
+	//Imagens Ankur
+	v.push_back(Point2d(198, 93));
+	v.push_back(Point2d(833, 99));
+	v.push_back(Point2d(839, 549));
+	v.push_back(Point2d(186, 545));
+
 	pontosDoCanto.push_back(v);
 	aux = originalImages[0].clone();
 	calculaGridROI(aux, pontosDoCanto[0], 0);
@@ -192,10 +219,17 @@ void cantosPredefinidos(){
 	}
 
 	v.clear();
-	v.push_back(Point2d(184, 147));
+	//imagens sasha
+	/*v.push_back(Point2d(184, 147));
 	v.push_back(Point2d(594, 161));
 	v.push_back(Point2d(642, 455));
-	v.push_back(Point2d(202, 507));
+	v.push_back(Point2d(202, 507));*/
+	//imagen ankur
+	v.push_back(Point2d(258, 106));
+	v.push_back(Point2d(808, 148));
+	v.push_back(Point2d(801, 513));
+	v.push_back(Point2d(255, 547));
+
 	pontosDoCanto.push_back(v);
 	aux = originalImages[1].clone();
 	calculaGridROI(aux, pontosDoCanto[1], 1);
@@ -206,10 +240,17 @@ void cantosPredefinidos(){
 	}
 
 	v.clear();
-	v.push_back(Point2d(177, 173));
+	//imagens sasha
+	/*v.push_back(Point2d(177, 173));
 	v.push_back(Point2d(592, 162));
 	v.push_back(Point2d(608, 458));
-	v.push_back(Point2d(196, 506));
+	v.push_back(Point2d(196, 506));*/
+	//imagens ankur
+	v.push_back(Point2d(261, 109));
+	v.push_back(Point2d(828, 95));
+	v.push_back(Point2d(803, 544));
+	v.push_back(Point2d(247, 474));
+
 	pontosDoCanto.push_back(v);
 	aux = originalImages[2].clone();
 	calculaGridROI(aux, pontosDoCanto[2], 2);
@@ -220,10 +261,17 @@ void cantosPredefinidos(){
 	}
 
 	v.clear();
-	v.push_back(Point2d(184, 162));
+	//imagens sasha
+	/*v.push_back(Point2d(184, 162));
 	v.push_back(Point2d(595, 116));
 	v.push_back(Point2d(610, 455));
-	v.push_back(Point2d(205, 450));
+	v.push_back(Point2d(205, 450));*/
+	//imagens ankur
+	v.push_back(Point2d(244, 126));
+	v.push_back(Point2d(867, 151));
+	v.push_back(Point2d(814, 533));
+	v.push_back(Point2d(264, 523));
+
 	pontosDoCanto.push_back(v);
 	aux = originalImages[3].clone();
 	calculaGridROI(aux, pontosDoCanto[3], 3);
@@ -234,10 +282,17 @@ void cantosPredefinidos(){
 	}
 
 	v.clear();
-	v.push_back(Point2d(149, 134));
+	//imagens sasha
+	/*v.push_back(Point2d(149, 134));
 	v.push_back(Point2d(644, 96));
 	v.push_back(Point2d(718, 483));
-	v.push_back(Point2d(124, 512));
+	v.push_back(Point2d(124, 512));*/
+	//imagens ankur
+	v.push_back(Point2d(272, 148));
+	v.push_back(Point2d(796, 157));
+	v.push_back(Point2d(828, 522));
+	v.push_back(Point2d(226, 514));
+
 	pontosDoCanto.push_back(v);
 	aux = originalImages[4].clone();
 	calculaGridROI(aux, pontosDoCanto[4], 4);
@@ -275,7 +330,8 @@ void selecionarCantosComMouse(){
 void onMouseCallBack(int e, int x, int y, int flags, void * imageId){
 	if (e == CV_EVENT_LBUTTONDOWN){
 		int id = *((int*)imageId);
-		printf("x,y (%d,%d)\n", x, y);
+		//printf("x,y (%d,%d)\n", x, y);
+		printf("v.push_back(Point2d(%d,%d));\n", x, y);		
 
 		Point2d ponto(x, y);
 
