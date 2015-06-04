@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <vector>
 #include <math.h> 
+#include <iomanip>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -40,10 +41,10 @@ using namespace std;
 //DEBUG e CONTROLE
 #define REDUZIR_IMAGENS 0
 #define SELECT_CORNERS_MOUSE 0
-#define MOSTRA_GRID 1
+#define MOSTRA_GRID 0
 #define MOSTRA_CADA_ROI 0
-#define MOSTRA_POSICAO_PC 1
-#define MOSTRA_REPROJECAO 1
+#define MOSTRA_POSICAO_PC 0
+#define MOSTRA_REPROJECAO 0
 
 // variaveis
 vector<string> imagePaths;
@@ -73,7 +74,7 @@ static double computeReprojectionErrors(const vector<vector<Point3f> >& objectPo
 	const vector<Mat>& rvecs, const vector<Mat>& tvecs,
 	const Mat& cameraMatrix, const Mat& distCoeffs,
 	vector<float>& perViewErrors);
-
+void print(Mat mat, int prec);
 
 int main(){
 
@@ -147,9 +148,19 @@ int main(){
 
 	
 	if (ok){
-		cout << "Calibration succeeded. avg re projection error = " << totalAvgErr;
-		cout << "Camera Matrix (intrinsic) " << cameraMatrix << endl;
-		cout << "Coeficientes de Distorcao " << distCoeffs << endl;
+		cout << "Calibration succeeded. avg re projection error = " << totalAvgErr << endl;
+		cout << endl << "Camera Matrix (intrinsic) " << endl;
+		print(cameraMatrix, 2);
+		cout << endl << "Coeficientes de Distorcao " << endl;
+		print(distCoeffs, 2);
+
+		for (int i = 0; i < rvecs.size();i++){
+			cout << endl << "R-" << i << endl;
+			print(rvecs[i], 2);
+			cout << endl << "t-" << i << endl;
+			print(tvecs[i], 2);
+			cout << endl;
+		}		
 	}
 	else{
 		cout << "Calibration failed. avg re projection error = " << totalAvgErr;
@@ -615,4 +626,20 @@ static double computeReprojectionErrors(const vector<vector<Point3f> >& objectPo
 	}
 	cv::destroyWindow("Reprojecao");
 	return std::sqrt(totalErr / totalPoints);
+}
+
+void print(Mat mat, int prec)
+{
+	for (int i = 0; i<mat.size().height; i++)
+	{
+		cout << "[";
+		for (int j = 0; j<mat.size().width; j++)
+		{
+			cout << fixed << setprecision(prec) << mat.at<double>(i, j);
+			if (j != mat.size().width - 1)
+				cout << ", ";
+			else
+				cout << "]" << endl;
+		}
+	}
 }
