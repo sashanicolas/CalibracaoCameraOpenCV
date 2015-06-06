@@ -2,23 +2,23 @@
  * Implementecao Inicial de calibracao de camera com padrao circular
  * Sasha Nicolas
  * Tecgraf PUC Rio
- * 
+ *
  * READ.ME:
-   1) Passa as imagens em carregaImagens() - hard coded mesmo
-   2) Passa a configuracao dos padroes 
-      quantPontosControleWidth = 9;
-	  quantPontosControleHeight = 6;
-	  distanceCP = 35; //milimetros
-   3) Configura os #define (ativa ou desativa)
-      REDUZIR_IMAGENS - se for carregar imagens muito grande, reduz por 4
-      SELECT_CORNERS_MOUSE - para selecionar com o mouse os 4 cantos de cada imagem
-	  MOSTRA_GRID - para visualizar o grid calculado
-	  MOSTRA_CADA_ROI - para visulizar cada circulo segmentado (nao ativa - eh meio chato)
-	  MOSTRA_POSICAO_PC - para mostra o centro dos pontos de controles (PC)
-      MOSTRA_REPROJECAO - mostra comparacao do da reprojecao
+ 1) Passa as imagens em carregaImagens() - hard coded mesmo
+ 2) Passa a configuracao dos padroes
+ quantPontosControleWidth = 9;
+ quantPontosControleHeight = 6;
+ distanceCP = 35; //milimetros
+ 3) Configura os #define (ativa ou desativa)
+ REDUZIR_IMAGENS - se for carregar imagens muito grande, reduz por 4
+ SELECT_CORNERS_MOUSE - para selecionar com o mouse os 4 cantos de cada imagem
+ MOSTRA_GRID - para visualizar o grid calculado
+ MOSTRA_CADA_ROI - para visulizar cada circulo segmentado (nao ativa - eh meio chato)
+ MOSTRA_POSICAO_PC - para mostra o centro dos pontos de controles (PC)
+ MOSTRA_REPROJECAO - mostra comparacao do da reprojecao
 
-	** tudo tem waitkey(0) - entao passa com evento do teclado
-	** para selecionar os 4 cantos comeca do canto superior esquerdo e vai girando em ordem horaria
+ ** tudo tem waitkey(0) - entao passa com evento do teclado
+ ** para selecionar os 4 cantos comeca do canto superior esquerdo e vai girando em ordem horaria
  */
 
 #include <iostream>
@@ -45,10 +45,13 @@ using namespace std;
 #define MOSTRA_CADA_ROI 0
 #define MOSTRA_POSICAO_PC 0
 #define MOSTRA_REPROJECAO 0
+#define MOSTRA_UNDISTORTED 0
+#define MOSTRA_UNPROJECTED 0
+#define MOSTRA_PERSPECTIVE_TRANSFORM 1
 
 // variaveis
 vector<string> imagePaths;
-vector<Mat> originalImages;
+vector<Mat> originalImages, undistortedImages;
 vector<vector<Point2d>> pontosDoCanto;
 int quantPontosControleWidth, quantPontosControleHeight, countPoints, distanceCP;
 vector<vector<Point2f>> pontosDoGridDeCadaImagem;
@@ -91,10 +94,10 @@ int main(){
 		selecionarCantosComMouse();
 	else
 		cantosPredefinidos();
-	
-	
+
+
 	Mat aux;
-	
+
 	// Primeira iteracao
 	//calcula ponto inicial dos circulos
 	for (int i = 0; i < imagePaths.size(); i++){
@@ -109,19 +112,19 @@ int main(){
 				for (int j = 0; j < quantPontosControleWidth; j++){
 					desenhaCruz(aux, posicaoPontosDeControleEmCadaImagem[k][i*quantPontosControleWidth + j].x,
 						posicaoPontosDeControleEmCadaImagem[k][i*quantPontosControleWidth + j].y, Scalar(255, 255, 255));
-				}				
+				}
 			}
 			mostraImagem(aux, imagePaths[k]);
 			moveWindow(imagePaths[k], 150, 150);
 			waitKey(0);
-			destroyWindow(imagePaths[k]);			
+			cv::destroyWindow(imagePaths[k]);
 		}
 	}
 
 	//calibracao inicial
 	//Find intrinsic and extrinsic camera parameters
 	Mat cameraMatrix, distCoeffs;
-	int flag = CV_CALIB_FIX_K4 | CV_CALIB_FIX_K5 | CV_CALIB_FIX_ASPECT_RATIO |
+	int flag = CV_CALIB_FIX_ASPECT_RATIO |
 		CV_CALIB_FIX_PRINCIPAL_POINT | CV_CALIB_ZERO_TANGENT_DIST;
 	cameraMatrix = Mat::eye(3, 3, CV_64F);
 	if (flag)
@@ -129,24 +132,24 @@ int main(){
 
 	distCoeffs = Mat::zeros(8, 1, CV_64F);
 	Size imageSize(originalImages[0].size());
-	vector<Mat> rvecs, tvecs;	
-	
+	vector<Mat> rvecs, tvecs;
+
 	calcPosicoesIdeaisObjeto();
-	cout << "posicao objeto: "<<posicaoPontosDeControleIdealObjeto[0]<<endl;
+	cout << "posicao objeto: " << posicaoPontosDeControleIdealObjeto[0] << endl;
 	posicaoPontosDeControleIdealObjeto.resize(originalImages.size(), posicaoPontosDeControleIdealObjeto[0]);
 
-	double rms = calibrateCamera(posicaoPontosDeControleIdealObjeto, posicaoPontosDeControleEmCadaImagem, imageSize, cameraMatrix,
-		distCoeffs, rvecs, tvecs, flag);
+	double rms = calibrateCamera(posicaoPontosDeControleIdealObjeto, posicaoPontosDeControleEmCadaImagem,
+		imageSize, cameraMatrix, distCoeffs, rvecs, tvecs, flag);
 
 	cout << "Re-projection error reported by calibrateCamera: " << rms << endl;
-	
+
 	vector<float> reprojErrs;
 	double totalAvgErr = 0;
 	bool ok = checkRange(cameraMatrix) && checkRange(distCoeffs);
 	totalAvgErr = computeReprojectionErrors(posicaoPontosDeControleIdealObjeto, posicaoPontosDeControleEmCadaImagem,
 		rvecs, tvecs, cameraMatrix, distCoeffs, reprojErrs);
 
-	
+
 	if (ok){
 		cout << "Calibration succeeded. avg re projection error = " << totalAvgErr << endl;
 		cout << endl << "Camera Matrix (intrinsic) " << endl;
@@ -154,25 +157,123 @@ int main(){
 		cout << endl << "Coeficientes de Distorcao " << endl;
 		print(distCoeffs, 2);
 
-		for (int i = 0; i < rvecs.size();i++){
+		for (int i = 0; i < rvecs.size(); i++){
 			cout << endl << "R-" << i << endl;
 			print(rvecs[i], 2);
 			cout << endl << "t-" << i << endl;
 			print(tvecs[i], 2);
 			cout << endl;
-		}		
+		}
 	}
 	else{
 		cout << "Calibration failed. avg re projection error = " << totalAvgErr;
 	}
-	
-	
+
+	if (MOSTRA_UNDISTORTED){
+		//undistort imagens
+		Mat imageUndistorted;
+		for (int i = 0; i < imagePaths.size(); i++){
+			aux = originalImages[i];
+
+			undistort(aux, imageUndistorted, cameraMatrix, distCoeffs);
+
+			undistortedImages.push_back(imageUndistorted);
+
+			resize(aux, aux, Size(512, 384));
+			mostraImagem(aux, "Image original");
+			moveWindow("Image original", 0, 0);
+
+			resize(imageUndistorted, imageUndistorted, Size(512, 384));
+			mostraImagem(imageUndistorted, "Image undistorted");
+			moveWindow("Image undistorted", 530, 0);
+
+			waitKey(0);
+		}
+		cv::destroyWindow("Image original");
+		cv::destroyWindow("Image undistorted");
+	}
+
+	//tentativa do fronto paralelo
+	if (MOSTRA_UNPROJECTED)
+	{
+		Mat view, rview, map1, map2;
+		initUndistortRectifyMap(cameraMatrix, distCoeffs, Mat(),
+			getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, imageSize, 1, imageSize, 0),
+			imageSize, CV_16SC2, map1, map2);
+
+		for (int i = 0; i < imagePaths.size(); i++)
+		{
+			view = originalImages[i].clone();
+			//resize(view, view, Size(1000, 750));
+			if (view.empty())
+				continue;
+			remap(view, rview, map1, map2, INTER_LINEAR);
+
+			mostraImagem(rview, "Image View");
+
+			waitKey(0);
+		}
+		cv::destroyWindow("Image View");
+	}
+
+	//tentativa Perspective Transform
+	if (MOSTRA_PERSPECTIVE_TRANSFORM)
+	{
+		// Input Quadilateral or Image plane coordinates
+		Point2f inputQuad[4];
+		// Output Quadilateral or World plane coordinates
+		Point2f outputQuad[4];
+		
+		// Lambda Matrix
+		Mat perspectiveTransformMatrix(2, 4, CV_32FC1);
+		//Input and Output Image;
+		Mat output, input;
+
+		for (int i = 0; i < imagePaths.size(); i++)
+		{
+			input = originalImages[i].clone();			
+			perspectiveTransformMatrix = Mat::zeros(input.rows, input.cols, input.type());
+
+			// The 4 points that select quadilateral on the input , from top-left in clockwise order
+			// These four pts are the sides of the rect box used as input 
+			inputQuad[0] = posicaoPontosDeControleEmCadaImagem[i][0];			
+			inputQuad[1] = posicaoPontosDeControleEmCadaImagem[i][9];
+			inputQuad[2] = posicaoPontosDeControleEmCadaImagem[i][69];
+			inputQuad[3] = posicaoPontosDeControleEmCadaImagem[i][60];
+
+			// The 4 points where the mapping is to be done , from top-left in clockwise order
+			outputQuad[0] = Point2f(input.cols / 3, input.rows / 3);
+			outputQuad[1] = Point2f((input.cols * 2) / 3, input.rows / 3);
+			outputQuad[2] = Point2f((input.cols * 2) / 3, (input.rows * 2) / 3);
+			outputQuad[3] = Point2f(input.cols / 3, (input.rows * 2) / 3);
+
+
+			// Get the Perspective Transform Matrix i.e. lambda 
+			perspectiveTransformMatrix = getPerspectiveTransform(inputQuad, outputQuad);
+			// Apply the Perspective Transform just found to the src image
+			warpPerspective(input, output, perspectiveTransformMatrix, Size(input.cols,input.rows)/*output.size()*/);
+
+			resize(input, input, Size(512, 384));
+			mostraImagem(input, "Image original");
+			moveWindow("Image original", 0, 0);
+
+			resize(output, output, Size(512, 384));
+			mostraImagem(output, "Image fronto parallel");
+			moveWindow("Image fronto parallel", 530, 0);
+
+			waitKey(0);
+		}
+		cv::destroyWindow("Image original");
+		cv::destroyWindow("Image fronto parallel");
+	}
+
+
 	//outras iteracoes
 	//a fazer
 
-	cout << "\nTerminado.";
+	/*cout << "\nTerminado.";
 	int a;
-	cin >> a;
+	cin >> a;*/
 
 	return 0;
 }
@@ -195,14 +296,14 @@ void carregaImagens(){
 	imagePaths.push_back("imagens/img5.bmp");
 
 	for (int i = 0; i < imagePaths.size(); i++){
-		printf(" - Imagem %d...\n",i);
+		printf(" - Imagem %d...\n", i);
 		Mat aux, aux2;
 		aux = imread(imagePaths[i]);
-		if(REDUZIR_IMAGENS)
+		if (REDUZIR_IMAGENS)
 			resize(aux, aux, Size(aux.size().width / 4, aux.size().height / 4));
 		originalImages.push_back(aux);
 	}
-	printf("Feito!\n");	
+	printf("Feito!\n");
 }
 
 void cantosPredefinidos(){
@@ -342,7 +443,7 @@ void onMouseCallBack(int e, int x, int y, int flags, void * imageId){
 	if (e == CV_EVENT_LBUTTONDOWN){
 		int id = *((int*)imageId);
 		//printf("x,y (%d,%d)\n", x, y);
-		printf("v.push_back(Point2d(%d,%d));\n", x, y);		
+		printf("v.push_back(Point2d(%d,%d));\n", x, y);
 
 		Point2d ponto(x, y);
 
@@ -398,7 +499,7 @@ void calculaGridROI(Mat img, vector<Point2d> pontosCanto, int id){
 	Mat H = findHomography(planePoints, imagePoints);
 
 	if (MOSTRA_GRID)
-	cout << "H = " << endl << " " << H << endl << endl;
+		cout << "H = " << endl << " " << H << endl << endl;
 
 	int quantPontosGrid = (quantPontosControleWidth + 1) * (quantPontosControleHeight + 1);
 	Mat pontosGridPlano(3, quantPontosGrid, CV_64F);
@@ -502,7 +603,7 @@ void computeEllipse(Mat imgOriginal, int idImg){
 		gridInt[i].x = round(gridFloat[i].x);
 		gridInt[i].y = round(gridFloat[i].y);
 	}
-	
+
 	Mat imgDoLoop;
 	double min, max, cweight, thresh;
 	int countPixelsInCircle, sumX, sumY;
@@ -539,7 +640,7 @@ void computeEllipse(Mat imgOriginal, int idImg){
 			for (int k = 0; k < cellImgBW.cols; k++){
 				for (int l = 0; l < cellImgBW.rows; l++){
 					if (cellImgBW.at<uchar>(l, k)>thresh){// na imagem o circulo eh preto
-						cellImgBW.at<uchar>(l, k) = 255;						
+						cellImgBW.at<uchar>(l, k) = 255;
 					}
 					else{
 						cellImgBW.at<uchar>(l, k) = 0;
@@ -548,14 +649,14 @@ void computeEllipse(Mat imgOriginal, int idImg){
 						sumY += l;
 					}
 				}
-			}		
+			}
 			centro.x = ((float)sumX / (float)countPixelsInCircle);
 			centro.y = ((float)sumY / (float)countPixelsInCircle);
 
 			desenhaCruz(imgDoLoop, centro.x + c1.x, centro.y + c1.y, Scalar(255, 255, 255));
 			desenhaRetangulo(imgDoLoop, c1, c2, Scalar(255, 255, 0));
 			//desenhaQuadrilatero(imgDoLoop, p, Scalar(0, 0, 255));
-			
+
 			if (MOSTRA_CADA_ROI){
 				mostraImagem(imgDoLoop, "ROI");
 				mostraImagem(cellImgBW, "Celula");
@@ -563,7 +664,7 @@ void computeEllipse(Mat imgOriginal, int idImg){
 				waitKey(0);
 			}
 
-			posicaoPontosDeControle.push_back(centro+c1);
+			posicaoPontosDeControle.push_back(centro + c1);
 
 		}//for
 	}//for
@@ -580,7 +681,7 @@ void calcPosicoesIdeaisObjeto(){
 	for (int i = 0; i < quantPontosControleHeight; ++i)
 	for (int j = 0; j < quantPontosControleWidth; ++j)
 		v.push_back(Point3f(float(i*distanceCP), float(j*distanceCP), 0));
-	
+
 	posicaoPontosDeControleIdealObjeto.push_back(v);
 }
 
@@ -600,22 +701,22 @@ static double computeReprojectionErrors(const vector<vector<Point3f> >& objectPo
 	{
 		projectPoints(Mat(objectPoints[i]), rvecs[i], tvecs[i], cameraMatrix,
 			distCoeffs, imagePoints2);
-		
+
 		if (MOSTRA_REPROJECAO){
 			img = originalImages[i].clone();
-			
+
 			for (int k = 0; k < quantPontosControleHeight; k++){
 				for (int j = 0; j < quantPontosControleWidth; j++){
 					desenhaCruz(img, imagePoints[i][k*quantPontosControleWidth + j].x,
 						imagePoints[i][k*quantPontosControleWidth + j].y, Scalar(255, 255, 255));
-					desenhaCruz(img, imagePoints2[k*quantPontosControleWidth + j].x, 
-						imagePoints2[k*quantPontosControleWidth + j].y, Scalar(0, 0, 255));					
+					desenhaCruz(img, imagePoints2[k*quantPontosControleWidth + j].x,
+						imagePoints2[k*quantPontosControleWidth + j].y, Scalar(0, 0, 255));
 				}
 			}
 			mostraImagem(img, "Reprojecao");
 			moveWindow("Reprojecao", 150, 150);
 			waitKey(0);
-			
+
 		}
 		err = norm(Mat(imagePoints[i]), Mat(imagePoints2), CV_L2);
 
@@ -630,10 +731,10 @@ static double computeReprojectionErrors(const vector<vector<Point3f> >& objectPo
 
 void print(Mat mat, int prec)
 {
-	for (int i = 0; i<mat.size().height; i++)
+	for (int i = 0; i < mat.size().height; i++)
 	{
 		cout << "[";
-		for (int j = 0; j<mat.size().width; j++)
+		for (int j = 0; j < mat.size().width; j++)
 		{
 			cout << fixed << setprecision(prec) << mat.at<double>(i, j);
 			if (j != mat.size().width - 1)
