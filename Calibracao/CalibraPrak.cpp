@@ -6,8 +6,8 @@
  * READ.ME:
  1) Passa as imagens em carregaImagens() - hard coded mesmo
  2) Passa a configuracao dos padroes
- quantPontosControleWidth = 9;
- quantPontosControleHeight = 6;
+ nHorizontal = 9;
+ nVertical = 6;
  distanceCP = 35; //milimetros
  3) Configura os #define (ativa ou desativa)
  REDUZIR_IMAGENS - se for carregar imagens muito grande, reduz por 4
@@ -45,7 +45,7 @@ using namespace std;
 #define MOSTRA_CADA_ROI 0
 #define MOSTRA_POSICAO_PC 0
 #define MOSTRA_REPROJECAO 0
-#define MOSTRA_UNDISTORTED 0
+#define MOSTRA_UNDISTORTED 1
 #define MOSTRA_UNPROJECTED 0
 #define MOSTRA_PERSPECTIVE_TRANSFORM 1
 
@@ -53,11 +53,12 @@ using namespace std;
 vector<string> imagePaths;
 vector<Mat> originalImages, undistortedImages;
 vector<vector<Point2d>> pontosDoCanto;
-int quantPontosControleWidth, quantPontosControleHeight, countPoints, distanceCP;
-vector<vector<Point2f>> pontosDoGridDeCadaImagem;
-vector<vector<Point2f>> posicaoPontosDeControleEmCadaImagem;
-vector<vector<Point3f>> posicaoPontosDeControleIdealObjeto;
+int nHorizontal, nVertical, countPoints, distanceCP;
+vector<vector<Point2f>> pontosGrid;
 
+vector<vector<Point2f>> centros;
+vector<vector<Point3f>> centrosIdealObjeto;
+vector<vector<Point2f>> centrosUndistorted;
 
 // prototipos
 void carregaImagens();
@@ -82,8 +83,8 @@ void print(Mat mat, int prec);
 int main(){
 
 	//configurar definicoes
-	quantPontosControleWidth = 10;
-	quantPontosControleHeight = 7;
+	nHorizontal = 10;
+	nVertical = 7;
 	distanceCP = 35; //milimetros
 
 	// Carregar Imagens
@@ -108,10 +109,10 @@ int main(){
 	if (MOSTRA_POSICAO_PC){
 		for (int k = 0; k < originalImages.size(); k++){
 			aux = originalImages[k].clone();
-			for (int i = 0; i < quantPontosControleHeight; i++){
-				for (int j = 0; j < quantPontosControleWidth; j++){
-					desenhaCruz(aux, posicaoPontosDeControleEmCadaImagem[k][i*quantPontosControleWidth + j].x,
-						posicaoPontosDeControleEmCadaImagem[k][i*quantPontosControleWidth + j].y, Scalar(255, 255, 255));
+			for (int i = 0; i < nVertical; i++){
+				for (int j = 0; j < nHorizontal; j++){
+					desenhaCruz(aux, centros[k][i*nHorizontal + j].x,
+						centros[k][i*nHorizontal + j].y, Scalar(255, 255, 255));
 				}
 			}
 			mostraImagem(aux, imagePaths[k]);
@@ -135,10 +136,10 @@ int main(){
 	vector<Mat> rvecs, tvecs;
 
 	calcPosicoesIdeaisObjeto();
-	cout << "posicao objeto: " << posicaoPontosDeControleIdealObjeto[0] << endl;
-	posicaoPontosDeControleIdealObjeto.resize(originalImages.size(), posicaoPontosDeControleIdealObjeto[0]);
+	cout << "posicao objeto: " << centrosIdealObjeto[0] << endl;
+	centrosIdealObjeto.resize(originalImages.size(), centrosIdealObjeto[0]);
 
-	double rms = calibrateCamera(posicaoPontosDeControleIdealObjeto, posicaoPontosDeControleEmCadaImagem,
+	double rms = calibrateCamera(centrosIdealObjeto, centros,
 		imageSize, cameraMatrix, distCoeffs, rvecs, tvecs, flag);
 
 	cout << "Re-projection error reported by calibrateCamera: " << rms << endl;
@@ -146,7 +147,7 @@ int main(){
 	vector<float> reprojErrs;
 	double totalAvgErr = 0;
 	bool ok = checkRange(cameraMatrix) && checkRange(distCoeffs);
-	totalAvgErr = computeReprojectionErrors(posicaoPontosDeControleIdealObjeto, posicaoPontosDeControleEmCadaImagem,
+	totalAvgErr = computeReprojectionErrors(centrosIdealObjeto, centros,
 		rvecs, tvecs, cameraMatrix, distCoeffs, reprojErrs);
 
 
@@ -171,7 +172,7 @@ int main(){
 
 	if (MOSTRA_UNDISTORTED){
 		//undistort imagens
-		Mat imageUndistorted;
+		Mat imageUndistorted, aux2;
 		for (int i = 0; i < imagePaths.size(); i++){
 			aux = originalImages[i];
 
@@ -179,9 +180,31 @@ int main(){
 
 			undistortedImages.push_back(imageUndistorted);
 
+			//coloca cruz para a imagem original 
+			desenhaCruz(aux, centros[i][0].x, centros[i][0].y, Scalar(255, 255, 255));
+			desenhaCruz(aux, centros[i][9].x, centros[i][9].y, Scalar(255, 255, 255));
+			desenhaCruz(aux, centros[i][69].x, centros[i][69].y, Scalar(255, 255, 255));
+			desenhaCruz(aux, centros[i][60].x, centros[i][60].y, Scalar(255, 255, 255));
+
 			resize(aux, aux, Size(512, 384));
 			mostraImagem(aux, "Image original");
 			moveWindow("Image original", 0, 0);
+
+			//coloca cruz para a imagem distorcida
+			vector<Point2f> centrosUndist;
+
+			undistortPoints(centros[i], centrosUndist, cameraMatrix,
+				distCoeffs, noArray(), cameraMatrix);
+
+			centrosUndistorted.push_back(centrosUndist);
+
+			//mudar pra nao alterar a imageUndistorted ao inserir a cruz
+			for (int m = 0; m < nVertical; m++){
+				for (int n = 0; n < nHorizontal; n++){
+					desenhaCruz(imageUndistorted, centrosUndist[m*nHorizontal + n].x,
+						centrosUndist[m*nHorizontal + n].y, Scalar(255, 255, 255));
+				}
+			}
 
 			resize(imageUndistorted, imageUndistorted, Size(512, 384));
 			mostraImagem(imageUndistorted, "Image undistorted");
@@ -223,7 +246,7 @@ int main(){
 		Point2f inputQuad[4];
 		// Output Quadilateral or World plane coordinates
 		Point2f outputQuad[4];
-		
+
 		// Lambda Matrix
 		Mat perspectiveTransformMatrix(2, 4, CV_32FC1);
 		//Input and Output Image;
@@ -231,15 +254,15 @@ int main(){
 
 		for (int i = 0; i < imagePaths.size(); i++)
 		{
-			input = originalImages[i].clone();			
+			input = undistortedImages[i].clone();
 			perspectiveTransformMatrix = Mat::zeros(input.rows, input.cols, input.type());
 
 			// The 4 points that select quadilateral on the input , from top-left in clockwise order
 			// These four pts are the sides of the rect box used as input 
-			inputQuad[0] = posicaoPontosDeControleEmCadaImagem[i][0];			
-			inputQuad[1] = posicaoPontosDeControleEmCadaImagem[i][9];
-			inputQuad[2] = posicaoPontosDeControleEmCadaImagem[i][69];
-			inputQuad[3] = posicaoPontosDeControleEmCadaImagem[i][60];
+			inputQuad[0] = centrosUndistorted[i][0];
+			inputQuad[1] = centrosUndistorted[i][9];
+			inputQuad[2] = centrosUndistorted[i][69];
+			inputQuad[3] = centrosUndistorted[i][60];
 
 			// The 4 points where the mapping is to be done , from top-left in clockwise order
 			outputQuad[0] = Point2f(input.cols / 3, input.rows / 3);
@@ -251,11 +274,11 @@ int main(){
 			// Get the Perspective Transform Matrix i.e. lambda 
 			perspectiveTransformMatrix = getPerspectiveTransform(inputQuad, outputQuad);
 			// Apply the Perspective Transform just found to the src image
-			warpPerspective(input, output, perspectiveTransformMatrix, Size(input.cols,input.rows)/*output.size()*/);
+			warpPerspective(input, output, perspectiveTransformMatrix, Size(input.cols, input.rows)/*output.size()*/);
 
 			resize(input, input, Size(512, 384));
-			mostraImagem(input, "Image original");
-			moveWindow("Image original", 0, 0);
+			mostraImagem(input, "Image undistorted");
+			moveWindow("Image undistorted", 0, 0);
 
 			resize(output, output, Size(512, 384));
 			mostraImagem(output, "Image fronto parallel");
@@ -263,7 +286,7 @@ int main(){
 
 			waitKey(0);
 		}
-		cv::destroyWindow("Image original");
+		cv::destroyWindow("Image undistorted");
 		cv::destroyWindow("Image fronto parallel");
 	}
 
@@ -501,7 +524,7 @@ void calculaGridROI(Mat img, vector<Point2d> pontosCanto, int id){
 	if (MOSTRA_GRID)
 		cout << "H = " << endl << " " << H << endl << endl;
 
-	int quantPontosGrid = (quantPontosControleWidth + 1) * (quantPontosControleHeight + 1);
+	int quantPontosGrid = (nHorizontal + 1) * (nVertical + 1);
 	Mat pontosGridPlano(3, quantPontosGrid, CV_64F);
 	Mat pontosGridImagem(3, quantPontosGrid, CV_64F);
 	vector<Point2f> pontos2dImagem(quantPontosGrid);
@@ -510,10 +533,10 @@ void calculaGridROI(Mat img, vector<Point2d> pontosCanto, int id){
 	float x, y;
 
 	//calculando pontos no plano
-	for (int i = 0; i < quantPontosControleWidth + 1; i++){
-		x = (float)i / (float)quantPontosControleWidth;
-		for (int j = 0; j < quantPontosControleHeight + 1; j++){
-			y = (float)j / (float)quantPontosControleHeight;
+	for (int i = 0; i < nHorizontal + 1; i++){
+		x = (float)i / (float)nHorizontal;
+		for (int j = 0; j < nVertical + 1; j++){
+			y = (float)j / (float)nVertical;
 			aux.push_back(Point2f(x, y));
 		}
 	}
@@ -541,19 +564,19 @@ void calculaGridROI(Mat img, vector<Point2d> pontosCanto, int id){
 	// Imprime grid
 	if (MOSTRA_GRID){
 		//linhas horizontais
-		x = (quantPontosControleHeight + 1)*(quantPontosControleWidth);
-		for (int i = 0; i < quantPontosControleHeight + 1; i++){
+		x = (nVertical + 1)*(nHorizontal);
+		for (int i = 0; i < nVertical + 1; i++){
 			desenhaLinha(img, pontos2dImagem[i],
 				pontos2dImagem[i + x], Scalar(255, 0, 0));
 		}
 		//linhas verticais
-		for (int i = 0; i < quantPontosControleWidth + 1; i++){
-			desenhaLinha(img, pontos2dImagem[i*(quantPontosControleHeight + 1)],
-				pontos2dImagem[i*(quantPontosControleHeight + 1) + quantPontosControleHeight], Scalar(255, 0, 0));
+		for (int i = 0; i < nHorizontal + 1; i++){
+			desenhaLinha(img, pontos2dImagem[i*(nVertical + 1)],
+				pontos2dImagem[i*(nVertical + 1) + nVertical], Scalar(255, 0, 0));
 		}
 	}
 
-	pontosDoGridDeCadaImagem.push_back(pontos2dImagem);
+	pontosGrid.push_back(pontos2dImagem);
 }
 
 void mostraImagem(Mat img, string name){
@@ -563,7 +586,7 @@ void mostraImagem(Mat img, string name){
 }
 
 int _ind(int i, int j){
-	return j*(quantPontosControleHeight + 1) + i;
+	return j*(nVertical + 1) + i;
 }
 
 Point2d getMenorPonto(Point2f p[4]){
@@ -597,7 +620,7 @@ void desenhaQuadrilatero(Mat img, Point p[4], Scalar c){
 
 void computeEllipse(Mat imgOriginal, int idImg){
 	//Arredonda os pontos do grid de float para inteiro
-	vector<Point2f> gridFloat = pontosDoGridDeCadaImagem[idImg];
+	vector<Point2f> gridFloat = pontosGrid[idImg];
 	vector<Point2d> gridInt(gridFloat.size());
 	for (int i = 0; i < gridFloat.size(); i++){
 		gridInt[i].x = round(gridFloat[i].x);
@@ -611,8 +634,8 @@ void computeEllipse(Mat imgOriginal, int idImg){
 	vector<Point2f> posicaoPontosDeControle;
 
 	//extrair cada regiao do grid e calcular centro da elipse
-	for (int i = 0; i < quantPontosControleHeight; i++){
-		for (int j = 0; j < quantPontosControleWidth; j++){
+	for (int i = 0; i < nVertical; i++){
+		for (int j = 0; j < nHorizontal; j++){
 			Point2f p[4];
 			p[0] = gridFloat[_ind(i, j)];
 			p[1] = gridFloat[_ind(i, j + 1)];
@@ -669,7 +692,7 @@ void computeEllipse(Mat imgOriginal, int idImg){
 		}//for
 	}//for
 
-	posicaoPontosDeControleEmCadaImagem.push_back(posicaoPontosDeControle);
+	centros.push_back(posicaoPontosDeControle);
 
 	cv::destroyWindow("Celula");
 	cv::destroyWindow("ROI");
@@ -678,11 +701,11 @@ void computeEllipse(Mat imgOriginal, int idImg){
 
 void calcPosicoesIdeaisObjeto(){
 	vector<Point3f> v;
-	for (int i = 0; i < quantPontosControleHeight; ++i)
-	for (int j = 0; j < quantPontosControleWidth; ++j)
+	for (int i = 0; i < nVertical; ++i)
+	for (int j = 0; j < nHorizontal; ++j)
 		v.push_back(Point3f(float(i*distanceCP), float(j*distanceCP), 0));
 
-	posicaoPontosDeControleIdealObjeto.push_back(v);
+	centrosIdealObjeto.push_back(v);
 }
 
 static double computeReprojectionErrors(const vector<vector<Point3f> >& objectPoints,
@@ -705,12 +728,12 @@ static double computeReprojectionErrors(const vector<vector<Point3f> >& objectPo
 		if (MOSTRA_REPROJECAO){
 			img = originalImages[i].clone();
 
-			for (int k = 0; k < quantPontosControleHeight; k++){
-				for (int j = 0; j < quantPontosControleWidth; j++){
-					desenhaCruz(img, imagePoints[i][k*quantPontosControleWidth + j].x,
-						imagePoints[i][k*quantPontosControleWidth + j].y, Scalar(255, 255, 255));
-					desenhaCruz(img, imagePoints2[k*quantPontosControleWidth + j].x,
-						imagePoints2[k*quantPontosControleWidth + j].y, Scalar(0, 0, 255));
+			for (int k = 0; k < nVertical; k++){
+				for (int j = 0; j < nHorizontal; j++){
+					desenhaCruz(img, imagePoints[i][k*nHorizontal + j].x,
+						imagePoints[i][k*nHorizontal + j].y, Scalar(255, 255, 255));
+					desenhaCruz(img, imagePoints2[k*nHorizontal + j].x,
+						imagePoints2[k*nHorizontal + j].y, Scalar(0, 0, 255));
 				}
 			}
 			mostraImagem(img, "Reprojecao");
