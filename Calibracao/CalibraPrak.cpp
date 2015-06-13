@@ -51,7 +51,7 @@ using namespace std;
 
 // variaveis
 vector<string> imagePaths;
-vector<Mat> originalImages, undistortedImages;
+vector<Mat> originalImages, undistortedImages, frontoParallelImages;
 vector<vector<Point2d>> pontosDoCanto;
 int nHorizontal, nVertical, countPoints, distanceCP;
 vector<vector<Point2f>> pontosGrid;
@@ -199,18 +199,20 @@ int main(){
 			centrosUndistorted.push_back(centrosUndist);
 
 			//mudar pra nao alterar a imageUndistorted ao inserir a cruz
+			aux2 = imageUndistorted.clone();
 			for (int m = 0; m < nVertical; m++){
 				for (int n = 0; n < nHorizontal; n++){
-					desenhaCruz(imageUndistorted, centrosUndist[m*nHorizontal + n].x,
+					desenhaCruz(aux2, centrosUndist[m*nHorizontal + n].x,
 						centrosUndist[m*nHorizontal + n].y, Scalar(255, 255, 255));
 				}
 			}
 
 			resize(imageUndistorted, imageUndistorted, Size(512, 384));
-			mostraImagem(imageUndistorted, "Image undistorted");
+			resize(aux2, aux2, Size(512, 384));
+			
+			/*mostraImagem(aux2, "Image undistorted");
 			moveWindow("Image undistorted", 530, 0);
-
-			waitKey(0);
+			waitKey(0);*/
 		}
 		cv::destroyWindow("Image original");
 		cv::destroyWindow("Image undistorted");
@@ -252,6 +254,10 @@ int main(){
 		//Input and Output Image;
 		Mat output, input;
 
+		float div = 10;
+		float d1w, d1h; //distancia entre cantos horizontal e vertical
+		float offsetx = 60, offsety=90;
+
 		for (int i = 0; i < imagePaths.size(); i++)
 		{
 			input = undistortedImages[i].clone();
@@ -265,10 +271,17 @@ int main(){
 			inputQuad[3] = centrosUndistorted[i][60];
 
 			// The 4 points where the mapping is to be done , from top-left in clockwise order
-			outputQuad[0] = Point2f(input.cols / 3, input.rows / 3);
-			outputQuad[1] = Point2f((input.cols * 2) / 3, input.rows / 3);
-			outputQuad[2] = Point2f((input.cols * 2) / 3, (input.rows * 2) / 3);
-			outputQuad[3] = Point2f(input.cols / 3, (input.rows * 2) / 3);
+
+			/*outputQuad[0] = Point2f(input.cols / div, input.rows / div);
+			outputQuad[1] = Point2f((input.cols * (div - 1)) / div, input.rows / div);
+			outputQuad[2] = Point2f((input.cols * (div - 1)) / div, (input.rows * (div - 1)) / div);
+			outputQuad[3] = Point2f(input.cols / div, (input.rows * (div - 1)) / div);*/
+
+			//achar os 4 pontos de forma correta
+			outputQuad[0] = Point2f(offsetx, offsety);
+			outputQuad[1] = Point2f(input.cols - offsetx, offsety);
+			outputQuad[2] = Point2f(input.cols - offsetx, input.rows - offsety);
+			outputQuad[3] = Point2f(offsetx, input.rows - offsety);
 
 
 			// Get the Perspective Transform Matrix i.e. lambda 
@@ -276,23 +289,39 @@ int main(){
 			// Apply the Perspective Transform just found to the src image
 			warpPerspective(input, output, perspectiveTransformMatrix, Size(input.cols, input.rows)/*output.size()*/);
 
+			frontoParallelImages.push_back(output);
+
 			resize(input, input, Size(512, 384));
-			mostraImagem(input, "Image undistorted");
-			moveWindow("Image undistorted", 0, 0);
+			mostraImagem(input, "Image undistorted 2");
+			moveWindow("Image undistorted 2", 0, 0);
 
 			resize(output, output, Size(512, 384));
 			mostraImagem(output, "Image fronto parallel");
 			moveWindow("Image fronto parallel", 530, 0);
 
+			cout << "Perspective matrix " << endl;
+			print(perspectiveTransformMatrix, 3);
+
 			waitKey(0);
 		}
-		cv::destroyWindow("Image undistorted");
+		cv::destroyWindow("Image undistorted 2");
 		cv::destroyWindow("Image fronto parallel");
+
+		for (int i = 0; i < frontoParallelImages.size(); i++)
+		{
+			mostraImagem(frontoParallelImages[i], "fronto parallel");
+			moveWindow("fronto parallel", 0, 0);
+
+			waitKey(0);
+		}
+		cv::destroyWindow("fronto parallel");
 	}
 
 
 	//outras iteracoes
 	//a fazer
+
+
 
 	/*cout << "\nTerminado.";
 	int a;
