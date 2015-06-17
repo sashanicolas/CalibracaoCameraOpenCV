@@ -61,6 +61,9 @@ vector<vector<Point2f>> centrosOriginal;
 vector<vector<Point3f>> centrosIdealObjeto;
 vector<vector<Point2f>> centrosUndistorted;
 vector<vector<Point2f>> centrosFrontoParallel;
+vector<vector<Point2f>> novosCentrosFrontoParallel;
+vector<vector<Point2f>> centrosProjetados;
+vector<vector<Point2f>> centrosDistorcidos;
 
 Mat cameraMatrix, distCoeffs;
 int flag = CV_CALIB_FIX_ASPECT_RATIO |
@@ -95,6 +98,8 @@ void findCentrosFrontoParalelo();
 vector<Point2f> computeCorrelationSSD(Mat image, vector<Point2f>);
 vector<Point2f> fitEllipse(Mat image, vector<Point2f>);
 void desenhaCentros(Mat img, vector<Point2f> centros);
+void proj_dist_centros();
+void desenhaCentros(Mat img, vector<Point2f> centros, Scalar cor);
 
 int main(){
 
@@ -123,13 +128,8 @@ int main(){
 
 	if (MOSTRA_POSICAO_PC){
 		for (int k = 0; k < originalImages.size(); k++){
-			aux = originalImages[k].clone();
-			for (int i = 0; i < nVertical; i++){
-				for (int j = 0; j < nHorizontal; j++){
-					desenhaCruz(aux, centrosOriginal[k][i*nHorizontal + j].x,
-						centrosOriginal[k][i*nHorizontal + j].y, Scalar(255, 255, 255));
-				}
-			}
+			aux = originalImages[k].clone();			
+			desenhaCentros(aux, centrosOriginal[k], Scalar(255, 255, 255));
 			mostraImagem(aux, imagePaths[k]);
 			moveWindow(imagePaths[k], 150, 150);
 			waitKey(0);
@@ -139,42 +139,24 @@ int main(){
 
 	// Calibracao inicial
 	calibraCamera();
-
-	undistortImages();
-
-	//tentativa do fronto paralelo - NOT WORKING
-	if (MOSTRA_UNPROJECTED)
-	{
-		Mat view, rview, map1, map2;
-		initUndistortRectifyMap(cameraMatrix, distCoeffs, Mat(),
-			getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, originalImages[0].size(), 1, originalImages[0].size(), 0),
-			originalImages[0].size(), CV_16SC2, map1, map2);
-
-		for (int i = 0; i < imagePaths.size(); i++)
-		{
-			view = originalImages[i].clone();
-			//resize(view, view, Size(1000, 750));
-			if (view.empty())
-				continue;
-			remap(view, rview, map1, map2, INTER_LINEAR);
-
-			mostraImagem(rview, "Image View");
-
-			waitKey(0);
-		}
-		cv::destroyWindow("Image View");
+		
+	for (int iter = 0; iter < 5; iter++){
+		undistortImages();
+		frontoParalelo();
+		findCentrosFrontoParalelo();
+		proj_dist_centros();
+		calibraCamera();
+		
+		if (iter == 4) break;
+		cout << "\nTerminado? s ou n";
+		char a;
+		cin >> a;
+		if (a == 's') break;
 	}
-
-	frontoParalelo();
-	findCentrosFrontoParalelo();
-
-	//outras iteracoes
-	//a fazer
-
-
-	/*cout << "\nTerminado.";
-	int a;
-	cin >> a;*/
+	
+	cout << "\nTerminado.";
+	char a;
+	cin >> a;
 
 	return 0;
 }
@@ -579,6 +561,7 @@ void computeEllipse(Mat imgOriginal, int idImg){
 
 void calcPosicoesIdeaisObjeto(){
 	vector<Point3f> v;
+	centrosIdealObjeto.clear();
 	for (int i = 0; i < nVertical; ++i)
 	for (int j = 0; j < nHorizontal; ++j)
 		v.push_back(Point3f(float(i*distanceCP), float(j*distanceCP), 0));
@@ -693,6 +676,9 @@ void calibraCamera(){
 }
 
 void undistortImages(){
+	undistortedImages.clear();
+	centrosUndistorted.clear();
+
 	// Undistort imagens
 	Mat imageUndistorted, aux, aux2;
 	for (int i = 0; i < imagePaths.size(); i++){
@@ -754,6 +740,10 @@ void frontoParalelo(){
 	float d1w, d1h; //distancia entre cantos horizontal e vertical
 	float offsetx = 60, offsety = 90;
 	distanciaCentro = -1;
+
+	frontoParallelImages.clear();
+	homografias.clear();
+	centrosFrontoParallel.clear();
 
 	for (int i = 0; i < imagePaths.size(); i++)
 	{
@@ -829,7 +819,8 @@ void frontoParalelo(){
 void findCentrosFrontoParalelo(){
 	Mat aux;
 	vector<Point2f> novosCentros;
-
+	
+	novosCentrosFrontoParallel.clear();
 	for (int i = 0; i < frontoParallelImages.size(); i++){
 		aux = frontoParallelImages[i].clone();
 
@@ -839,6 +830,7 @@ void findCentrosFrontoParalelo(){
 		else
 			novosCentros = fitEllipse(aux, centrosFrontoParallel[i]);
 
+		novosCentrosFrontoParallel.push_back(novosCentros);
 	}
 }
 
@@ -853,6 +845,28 @@ vector<Point2f> computeCorrelationSSD(Mat image, vector<Point2f> centros){
 	cvtColor(circulo, circulo, CV_BGR2GRAY);
 	//circulo = 255 - circulo;
 
+
+	/*Mat ssd(100, 100, CV_64F, Scalar(0));
+	Point2d p1(50, 50), p2(50, 49), l, f;
+	ssd.at<double>(p1.x, p1.y) = 255;
+
+	while (true){
+	ssd.at<double>(p2.x, p2.y) = 255;
+
+	l.x = p1.y - p2.y;
+	l.y = p2.x - p1.x;
+	f = p2 - p1;
+
+	p1 = p2;
+	if (ssd.at<double>(l.x + p2.x, l.y + p2.y) == 0)
+	p2 = l + p2;
+	else
+	p2 = f + p2;
+
+	mostraImagem(ssd, "ssd");
+	cv::waitKey(1);
+	}*/
+
 	Mat aux;
 	// para cada ponto de controle (centro)
 	cout << "Procurando pontos de controle ..." << endl;
@@ -863,8 +877,8 @@ vector<Point2f> computeCorrelationSSD(Mat image, vector<Point2f> centros){
 			cvtColor(aux, aux, CV_BGR2GRAY);
 
 			//verifica limites da imagem
-			int roi_x = centros[v*nHorizontal + h].x - dist;
-			int roi_w = dist * 2;
+			int roi_x = centros[v*nHorizontal + h].x - (dist / 2 + 5);
+			int roi_w = (dist / 2 + 5) * 2;
 			if (roi_x < 0){
 				roi_w += roi_x;
 				roi_x = 0;
@@ -872,8 +886,8 @@ vector<Point2f> computeCorrelationSSD(Mat image, vector<Point2f> centros){
 			if (roi_x + roi_w >= image.cols - 1){
 				roi_w = image.cols - roi_x;
 			}
-			int roi_y = centros[v*nHorizontal + h].y - dist;
-			int roi_h = dist * 2;
+			int roi_y = centros[v*nHorizontal + h].y - (dist / 2 + 5);
+			int roi_h = (dist / 2 + 5) * 2;
 			if (roi_y < 0){
 				roi_h += roi_y;
 				roi_y = 0;
@@ -882,20 +896,25 @@ vector<Point2f> computeCorrelationSSD(Mat image, vector<Point2f> centros){
 				roi_h = image.rows - roi_y;
 			}
 
-			//desenhaRetangulo(aux, Point2f(roi_x, roi_y), Point2f(roi_x + roi_w, roi_y + roi_h), Scalar(255, 255, 255));
+			/*desenhaRetangulo(aux, Point2f(roi_x, roi_y), Point2f(roi_x + roi_w, roi_y + roi_h), Scalar(255, 255, 255));
+			mostraImagem(aux, "roi");
+			waitKey(0);
+			continue;*/
 
-			Mat ssd(roi_h, roi_w, CV_64F, 999999999999);
+			/*Mat ssd(roi_h, roi_w, CV_64F, 999999999999);
 			double* p = ssd.ptr<double>(10);
 			for (int i = 0; i < 20; i++){
-				p[i] = 50;
+			p[i] = 50;
 			}
 			mostraImagem(ssd, "ssd");
-			cv::waitKey(0);
+			cv::waitKey(0);*/
 
 
 			float menor = 999999999999;
 			Point2f menorPosition;
 			int a = 1;
+
+
 			//itera na roi
 			for (int j = roi_y; j < roi_h + roi_y; j++){
 				for (int i = roi_x; i < roi_w + roi_x; i++){
@@ -907,12 +926,13 @@ vector<Point2f> computeCorrelationSSD(Mat image, vector<Point2f> centros){
 					uchar * p1, *p2;
 					for (int y = j; y < j + dist; y++){
 						p1 = aux.ptr<uchar>(y);
-						p2 = circulo.ptr<uchar>(y);
+						p2 = circulo.ptr<uchar>(y - j);
 						for (int x = i; x < i + dist; x++){
 							//sum += pow(aux.at<uchar>(y, x) - circulo.at<uchar>(y - j, x - i), 2);
 							sum += pow(p1[x] - p2[x - i], 2);
 						}
 					}
+
 					if (a == 1) {
 						menor = sum;
 						a = 0;
@@ -924,17 +944,80 @@ vector<Point2f> computeCorrelationSSD(Mat image, vector<Point2f> centros){
 					}
 					//ssd.at<double>(j - roi_y, i - roi_x) = sum;
 				}
-			}
+			}// end - for itera roi
 
-			//desenhaCruz(image, menorPosition.x + dist / 2, menorPosition.y + dist / 2, Scalar(255, 255, 255));
-			//mostraImagem(image, "Novos centros");
-			//waitKey(1);
+
+
+			//itera na roi usando iteracao espiral		
+			//Mat ssd(30, 30, CV_64F, Scalar(0));
+			//Point2d p1(15, 15), p2(15, 14), l, f, c(15, 15), 
+			//	cur_cen(centros[v*nHorizontal + h].x - c.x, centros[v*nHorizontal + h].y - c.y);
+			//ssd.at<double>(p1.x, p1.y) = 255;
+
+			//int max = 200;
+
+			//while (max--){
+			//	ssd.at<double>(p2.x, p2.y) = 255;
+
+			//	//itera na subroi	
+			//	float sum = 0;
+			//	for (int y = 0; y < dist; y++){
+			//		for (int x = 0; x < dist; x++){
+			//			sum += pow(aux.at<uchar>(p2.x + cur_cen.x - dist / 2, p2.y + cur_cen.y - dist / 2)
+			//				- circulo.at<uchar>(y, x), 2);
+			//		}
+			//	}
+			//	if (a == 1) {
+			//		menor = sum;
+			//		a = 0;
+			//	}
+			//	if (sum < menor){
+			//		menor = sum;
+			//		menorPosition.x = p2.x + cur_cen.x;
+			//		menorPosition.y = p2.y + cur_cen.y;
+			//	}
+			//	
+			//	//incremento
+			//	l.x = p1.y - p2.y;
+			//	l.y = p2.x - p1.x;
+			//	f = p2 - p1;
+
+			//	p1 = p2;
+			//	if (ssd.at<double>(l.x + p2.x, l.y + p2.y) == 0)
+			//		p2 = l + p2;
+			//	else
+			//		p2 = f + p2;
+
+			//}
+
+			//normal
+			//cout << "old " << Point2d(centros[v*nHorizontal + h].x, centros[v*nHorizontal + h].y) << endl;
+			//cout << "new " << Point2d(menorPosition.x + dist / 2, menorPosition.y + dist / 2) << endl;
+
+			/*desenhaCruz(image, centros[v*nHorizontal + h].x, centros[v*nHorizontal + h].y, Scalar(0, 0, 255));
+			desenhaCruz(image, menorPosition.x + dist / 2, menorPosition.y + dist / 2, Scalar(255, 255, 255));
+			mostraImagem(image, "Novos centros");
+			cv::waitKey(0);*/
 
 			novosCentros.push_back(Point2f(menorPosition.x + dist / 2, menorPosition.y + dist / 2));
-			cout << " ... achou " << v << "," << h << " ... " << endl;
+			//cout << " ... achou " << v << "," << h << " ... " << endl;
+
+
+			//espiral
+			/*cout << "old " << Point2d(centros[v*nHorizontal + h].x, centros[v*nHorizontal + h].y) << endl;
+			cout << "new " << Point2d(menorPosition.x, menorPosition.y) << endl;
+
+			desenhaCruz(image, centros[v*nHorizontal + h].x, centros[v*nHorizontal + h].y, Scalar(0, 0, 255));
+			desenhaCruz(image, menorPosition.x, menorPosition.y, Scalar(255, 255, 255));
+			mostraImagem(image, "Novos centros");
+			cv::waitKey(0);
+
+			novosCentros.push_back(Point2f(menorPosition.x, menorPosition.y));
+			cout << " ... achou " << v << "," << h << " ... " << endl;*/
+
 		} //for - centros
 	}//for - centros
-
+	cout << "     ... end "<< endl;
 	desenhaCentros(image, novosCentros);
 	mostraImagem(image, "Novos centros");
 	cv::waitKey(0);
@@ -959,4 +1042,131 @@ void desenhaCentros(Mat img, vector<Point2f> centros){
 	}
 }
 
+void desenhaCentros(Mat img, vector<Point2f> centros, Scalar cor){
+	for (int v = 0; v < nVertical; v++){
+		for (int h = 0; h < nHorizontal; h++){
+			desenhaCruz(img, centros[v*nHorizontal + h].x,
+				centros[v*nHorizontal + h].y, cor);
+		}
+	}
+}
+
+Point2f distorcePonto(Point2f point)
+{
+	double cx = cameraMatrix.at<double>(0, 2);
+	double cy = cameraMatrix.at<double>(1, 2);
+	double fx = cameraMatrix.at<double>(0, 0);
+	double fy = cameraMatrix.at<double>(1, 1);
+
+	// To relative coordinates <- this is the step you are missing.
+	double x = (point.x - cx) / fx;
+	double y = (point.y - cy) / fy;
+
+	double r2 = x*x + y*y;
+
+	double k1 = distCoeffs.at<double>(0, 0);
+	double k2 = distCoeffs.at<double>(1, 0);
+	double k3 = distCoeffs.at<double>(4, 0);
+	double p1 = distCoeffs.at<double>(2, 0);
+	double p2 = distCoeffs.at<double>(3, 0);
+
+	// Radial distorsion
+	double xDistort = x * (1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2);
+	double yDistort = y * (1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2);
+
+	// Tangential distorsion
+	xDistort = xDistort + (2 * p1 * x * y + p2 * (r2 + 2 * x * x));
+	yDistort = yDistort + (p1 * (r2 + 2 * y * y) + 2 * p2 * x * y);
+
+	// Back to absolute coordinates.
+	xDistort = xDistort * fx + cx;
+	yDistort = yDistort * fy + cy;
+
+	return Point2f((float)xDistort, (float)yDistort);
+}
+
+void proj_dist_centros(){
+	Mat aux;
+
+	centrosProjetados.clear();
+	//projeta
+	for (int i = 0; i < undistortedImages.size(); i++){
+		aux = undistortedImages[i].clone();
+
+		vector<Point2f> centrosProj;
+		perspectiveTransform(novosCentrosFrontoParallel[i], centrosProj, homografias[i].inv());
+
+		desenhaCentros(aux, centrosUndistorted[i], Scalar(0, 255, 255));
+		desenhaCentros(aux, centrosProj, Scalar(255, 255, 255));
+
+		centrosProjetados.push_back(centrosProj);
+
+		mostraImagem(aux, "Proj Centros");
+		waitKey(0);
+	}
+	cv::destroyWindow("Proj Centros");
+
+	centrosDistorcidos.clear();
+	//distorce
+	for (int i = 0; i < originalImages.size(); i++){
+		aux = originalImages[i].clone();
+
+		vector<Point2f> centrosDist;
+
+		cv::Mat rVec(3, 1, cv::DataType<double>::type); // Rotation vector
+		rVec.at<double>(0) = 0;
+		rVec.at<double>(1) = 0;
+		rVec.at<double>(2) = 0;
+		cv::Mat tVec(3, 1, cv::DataType<double>::type); // Translation vector
+		tVec.at<double>(0) = 0;
+		tVec.at<double>(1) = 0;
+		tVec.at<double>(2) = 0;
+
+		/*vector<Point3f> v;
+		for (int i = 0; i < centrosProj.size(); ++i)
+			v.push_back(Point3f(centrosProj[i].x, centrosProj[i].y, 0));
+
+		projectPoints(v, rVec, tVec, cameraMatrix, distCoeffs, centrosDist);*/
+
+		for (int j = 0; j < centrosProjetados[i].size(); j++)			
+			centrosDist.push_back(distorcePonto(centrosProjetados[i][j]));
+		
+		centrosDistorcidos.push_back(centrosDist);
+		
+		desenhaCentros(aux, centrosDist, Scalar(255, 255, 255));
+		desenhaCentros(aux, centrosOriginal[i], Scalar(0, 255, 255));
+
+		//atualiza o centro original para os novos centros, pq a calibracao vai rodar com eles
+		centrosOriginal[i] = centrosDist;
+
+		mostraImagem(aux, "Dist centros");
+		waitKey(0);
+	}
+	cv::destroyWindow("Dist centros");
+}
+
 // end - Sasha Nicolas
+
+
+//tentativa do fronto paralelo - NOT WORKING
+//if (MOSTRA_UNPROJECTED)
+//{
+//	Mat view, rview, map1, map2;
+//	initUndistortRectifyMap(cameraMatrix, distCoeffs, Mat(),
+//		getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, originalImages[0].size(), 1, originalImages[0].size(), 0),
+//		originalImages[0].size(), CV_16SC2, map1, map2);
+//
+//	for (int i = 0; i < imagePaths.size(); i++)
+//	{
+//		view = originalImages[i].clone();
+//		//resize(view, view, Size(1000, 750));
+//		if (view.empty())
+//			continue;
+//		remap(view, rview, map1, map2, INTER_LINEAR);
+//
+//		mostraImagem(rview, "Image View");
+//
+//		waitKey(0);
+//	}
+//	cv::destroyWindow("Image View");
+//}
