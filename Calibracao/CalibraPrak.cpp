@@ -45,9 +45,10 @@ using namespace std;
 #define MOSTRA_CADA_ROI 0
 #define MOSTRA_POSICAO_PC 0
 #define MOSTRA_REPROJECAO 0
-#define MOSTRA_UNDISTORTED 1
+#define MOSTRA_UNDISTORTED 0
 #define MOSTRA_UNPROJECTED 0
-#define MOSTRA_PERSPECTIVE_TRANSFORM 1
+#define MOSTRA_PERSPECTIVE_TRANSFORM 0
+#define AS_ANKUR 1
 
 // variaveis
 vector<string> imagePaths;
@@ -55,10 +56,18 @@ vector<Mat> originalImages, undistortedImages, frontoParallelImages;
 vector<vector<Point2d>> pontosDoCanto;
 int nHorizontal, nVertical, countPoints, distanceCP;
 vector<vector<Point2f>> pontosGrid;
-
-vector<vector<Point2f>> centros;
+vector<Mat> homografias;
+vector<vector<Point2f>> centrosOriginal;
 vector<vector<Point3f>> centrosIdealObjeto;
 vector<vector<Point2f>> centrosUndistorted;
+vector<vector<Point2f>> centrosFrontoParallel;
+
+Mat cameraMatrix, distCoeffs;
+int flag = CV_CALIB_FIX_ASPECT_RATIO |
+CV_CALIB_FIX_PRINCIPAL_POINT | CV_CALIB_ZERO_TANGENT_DIST;
+vector<Mat> rvecs, tvecs;
+float distanciaCentro;
+
 
 // prototipos
 void carregaImagens();
@@ -79,6 +88,13 @@ static double computeReprojectionErrors(const vector<vector<Point3f> >& objectPo
 	const Mat& cameraMatrix, const Mat& distCoeffs,
 	vector<float>& perViewErrors);
 void print(Mat mat, int prec);
+void calibraCamera();
+void undistortImages();
+void frontoParalelo();
+void findCentrosFrontoParalelo();
+vector<Point2f> computeCorrelationSSD(Mat image, vector<Point2f>);
+vector<Point2f> fitEllipse(Mat image, vector<Point2f>);
+void desenhaCentros(Mat img, vector<Point2f> centros);
 
 int main(){
 
@@ -96,11 +112,10 @@ int main(){
 	else
 		cantosPredefinidos();
 
-
 	Mat aux;
 
 	// Primeira iteracao
-	//calcula ponto inicial dos circulos
+	// calcula ponto inicial dos circulos (centro da elipse eh a media das coordenadas)
 	for (int i = 0; i < imagePaths.size(); i++){
 		aux = originalImages[i].clone();
 		computeEllipse(aux, i);
@@ -111,8 +126,8 @@ int main(){
 			aux = originalImages[k].clone();
 			for (int i = 0; i < nVertical; i++){
 				for (int j = 0; j < nHorizontal; j++){
-					desenhaCruz(aux, centros[k][i*nHorizontal + j].x,
-						centros[k][i*nHorizontal + j].y, Scalar(255, 255, 255));
+					desenhaCruz(aux, centrosOriginal[k][i*nHorizontal + j].x,
+						centrosOriginal[k][i*nHorizontal + j].y, Scalar(255, 255, 255));
 				}
 			}
 			mostraImagem(aux, imagePaths[k]);
@@ -122,109 +137,18 @@ int main(){
 		}
 	}
 
-	//calibracao inicial
-	//Find intrinsic and extrinsic camera parameters
-	Mat cameraMatrix, distCoeffs;
-	int flag = CV_CALIB_FIX_ASPECT_RATIO |
-		CV_CALIB_FIX_PRINCIPAL_POINT | CV_CALIB_ZERO_TANGENT_DIST;
-	cameraMatrix = Mat::eye(3, 3, CV_64F);
-	if (flag)
-		cameraMatrix.at<double>(0, 0) = 1.0;
+	// Calibracao inicial
+	calibraCamera();
 
-	distCoeffs = Mat::zeros(8, 1, CV_64F);
-	Size imageSize(originalImages[0].size());
-	vector<Mat> rvecs, tvecs;
+	undistortImages();
 
-	calcPosicoesIdeaisObjeto();
-	cout << "posicao objeto: " << centrosIdealObjeto[0] << endl;
-	centrosIdealObjeto.resize(originalImages.size(), centrosIdealObjeto[0]);
-
-	double rms = calibrateCamera(centrosIdealObjeto, centros,
-		imageSize, cameraMatrix, distCoeffs, rvecs, tvecs, flag);
-
-	cout << "Re-projection error reported by calibrateCamera: " << rms << endl;
-
-	vector<float> reprojErrs;
-	double totalAvgErr = 0;
-	bool ok = checkRange(cameraMatrix) && checkRange(distCoeffs);
-	totalAvgErr = computeReprojectionErrors(centrosIdealObjeto, centros,
-		rvecs, tvecs, cameraMatrix, distCoeffs, reprojErrs);
-
-
-	if (ok){
-		cout << "Calibration succeeded. avg re projection error = " << totalAvgErr << endl;
-		cout << endl << "Camera Matrix (intrinsic) " << endl;
-		print(cameraMatrix, 2);
-		cout << endl << "Coeficientes de Distorcao " << endl;
-		print(distCoeffs, 2);
-
-		for (int i = 0; i < rvecs.size(); i++){
-			cout << endl << "R-" << i << endl;
-			print(rvecs[i], 2);
-			cout << endl << "t-" << i << endl;
-			print(tvecs[i], 2);
-			cout << endl;
-		}
-	}
-	else{
-		cout << "Calibration failed. avg re projection error = " << totalAvgErr;
-	}
-
-	if (MOSTRA_UNDISTORTED){
-		//undistort imagens
-		Mat imageUndistorted, aux2;
-		for (int i = 0; i < imagePaths.size(); i++){
-			aux = originalImages[i];
-
-			undistort(aux, imageUndistorted, cameraMatrix, distCoeffs);
-
-			undistortedImages.push_back(imageUndistorted);
-
-			//coloca cruz para a imagem original 
-			desenhaCruz(aux, centros[i][0].x, centros[i][0].y, Scalar(255, 255, 255));
-			desenhaCruz(aux, centros[i][9].x, centros[i][9].y, Scalar(255, 255, 255));
-			desenhaCruz(aux, centros[i][69].x, centros[i][69].y, Scalar(255, 255, 255));
-			desenhaCruz(aux, centros[i][60].x, centros[i][60].y, Scalar(255, 255, 255));
-
-			resize(aux, aux, Size(512, 384));
-			mostraImagem(aux, "Image original");
-			moveWindow("Image original", 0, 0);
-
-			//coloca cruz para a imagem distorcida
-			vector<Point2f> centrosUndist;
-
-			undistortPoints(centros[i], centrosUndist, cameraMatrix,
-				distCoeffs, noArray(), cameraMatrix);
-
-			centrosUndistorted.push_back(centrosUndist);
-
-			//mudar pra nao alterar a imageUndistorted ao inserir a cruz
-			aux2 = imageUndistorted.clone();
-			for (int m = 0; m < nVertical; m++){
-				for (int n = 0; n < nHorizontal; n++){
-					desenhaCruz(aux2, centrosUndist[m*nHorizontal + n].x,
-						centrosUndist[m*nHorizontal + n].y, Scalar(255, 255, 255));
-				}
-			}
-
-			resize(imageUndistorted, imageUndistorted, Size(512, 384));
-			resize(aux2, aux2, Size(512, 384));
-			
-			/*mostraImagem(aux2, "Image undistorted");
-			moveWindow("Image undistorted", 530, 0);
-			waitKey(0);*/
-		}
-		cv::destroyWindow("Image original");
-		cv::destroyWindow("Image undistorted");
-	}
-
-	//tentativa do fronto paralelo
+	//tentativa do fronto paralelo - NOT WORKING
 	if (MOSTRA_UNPROJECTED)
 	{
 		Mat view, rview, map1, map2;
 		initUndistortRectifyMap(cameraMatrix, distCoeffs, Mat(),
-			getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, imageSize, 1, imageSize, 0),
-			imageSize, CV_16SC2, map1, map2);
+			getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, originalImages[0].size(), 1, originalImages[0].size(), 0),
+			originalImages[0].size(), CV_16SC2, map1, map2);
 
 		for (int i = 0; i < imagePaths.size(); i++)
 		{
@@ -241,86 +165,11 @@ int main(){
 		cv::destroyWindow("Image View");
 	}
 
-	//tentativa Perspective Transform
-	if (MOSTRA_PERSPECTIVE_TRANSFORM)
-	{
-		// Input Quadilateral or Image plane coordinates
-		Point2f inputQuad[4];
-		// Output Quadilateral or World plane coordinates
-		Point2f outputQuad[4];
-
-		// Lambda Matrix
-		Mat perspectiveTransformMatrix(2, 4, CV_32FC1);
-		//Input and Output Image;
-		Mat output, input;
-
-		float div = 10;
-		float d1w, d1h; //distancia entre cantos horizontal e vertical
-		float offsetx = 60, offsety=90;
-
-		for (int i = 0; i < imagePaths.size(); i++)
-		{
-			input = undistortedImages[i].clone();
-			perspectiveTransformMatrix = Mat::zeros(input.rows, input.cols, input.type());
-
-			// The 4 points that select quadilateral on the input , from top-left in clockwise order
-			// These four pts are the sides of the rect box used as input 
-			inputQuad[0] = centrosUndistorted[i][0];
-			inputQuad[1] = centrosUndistorted[i][9];
-			inputQuad[2] = centrosUndistorted[i][69];
-			inputQuad[3] = centrosUndistorted[i][60];
-
-			// The 4 points where the mapping is to be done , from top-left in clockwise order
-
-			/*outputQuad[0] = Point2f(input.cols / div, input.rows / div);
-			outputQuad[1] = Point2f((input.cols * (div - 1)) / div, input.rows / div);
-			outputQuad[2] = Point2f((input.cols * (div - 1)) / div, (input.rows * (div - 1)) / div);
-			outputQuad[3] = Point2f(input.cols / div, (input.rows * (div - 1)) / div);*/
-
-			//achar os 4 pontos de forma correta
-			outputQuad[0] = Point2f(offsetx, offsety);
-			outputQuad[1] = Point2f(input.cols - offsetx, offsety);
-			outputQuad[2] = Point2f(input.cols - offsetx, input.rows - offsety);
-			outputQuad[3] = Point2f(offsetx, input.rows - offsety);
-
-
-			// Get the Perspective Transform Matrix i.e. lambda 
-			perspectiveTransformMatrix = getPerspectiveTransform(inputQuad, outputQuad);
-			// Apply the Perspective Transform just found to the src image
-			warpPerspective(input, output, perspectiveTransformMatrix, Size(input.cols, input.rows)/*output.size()*/);
-
-			frontoParallelImages.push_back(output);
-
-			resize(input, input, Size(512, 384));
-			mostraImagem(input, "Image undistorted 2");
-			moveWindow("Image undistorted 2", 0, 0);
-
-			resize(output, output, Size(512, 384));
-			mostraImagem(output, "Image fronto parallel");
-			moveWindow("Image fronto parallel", 530, 0);
-
-			cout << "Perspective matrix " << endl;
-			print(perspectiveTransformMatrix, 3);
-
-			waitKey(0);
-		}
-		cv::destroyWindow("Image undistorted 2");
-		cv::destroyWindow("Image fronto parallel");
-
-		for (int i = 0; i < frontoParallelImages.size(); i++)
-		{
-			mostraImagem(frontoParallelImages[i], "fronto parallel");
-			moveWindow("fronto parallel", 0, 0);
-
-			waitKey(0);
-		}
-		cv::destroyWindow("fronto parallel");
-	}
-
+	frontoParalelo();
+	findCentrosFrontoParalelo();
 
 	//outras iteracoes
 	//a fazer
-
 
 
 	/*cout << "\nTerminado.";
@@ -721,7 +570,7 @@ void computeEllipse(Mat imgOriginal, int idImg){
 		}//for
 	}//for
 
-	centros.push_back(posicaoPontosDeControle);
+	centrosOriginal.push_back(posicaoPontosDeControle);
 
 	cv::destroyWindow("Celula");
 	cv::destroyWindow("ROI");
@@ -795,4 +644,319 @@ void print(Mat mat, int prec)
 				cout << "]" << endl;
 		}
 	}
+	cout << endl;
 }
+
+void calibraCamera(){
+	//Find intrinsic and extrinsic camera parameters
+	cameraMatrix = Mat::eye(3, 3, CV_64F);
+	if (flag) cameraMatrix.at<double>(0, 0) = 1.0;
+
+	distCoeffs = Mat::zeros(8, 1, CV_64F);
+	Size imageSize(originalImages[0].size());
+
+	calcPosicoesIdeaisObjeto();
+	//cout << "posicao objeto: " << centrosIdealObjeto[0] << endl;
+
+	centrosIdealObjeto.resize(originalImages.size(), centrosIdealObjeto[0]);
+
+	double rms = calibrateCamera(centrosIdealObjeto, centrosOriginal,
+		imageSize, cameraMatrix, distCoeffs, rvecs, tvecs, flag);
+
+	cout << "Re-projection error reported by calibrateCamera: " << rms << endl;
+
+	vector<float> reprojErrs;
+	double totalAvgErr = 0;
+	bool ok = checkRange(cameraMatrix) && checkRange(distCoeffs);
+
+	totalAvgErr = computeReprojectionErrors(centrosIdealObjeto, centrosOriginal,
+		rvecs, tvecs, cameraMatrix, distCoeffs, reprojErrs);
+
+	if (ok){
+		cout << "Calibration succeeded. avg re projection error = " << totalAvgErr << endl;
+		cout << endl << "Camera Matrix (intrinsic) " << endl;
+		print(cameraMatrix, 2);
+		cout << endl << "Coeficientes de Distorcao " << endl;
+		print(distCoeffs, 2);
+
+		for (int i = 0; i < rvecs.size(); i++){
+			cout << endl << "R-" << i << endl;
+			print(rvecs[i], 2);
+			cout << endl << "t-" << i << endl;
+			print(tvecs[i], 2);
+			cout << endl;
+		}
+	}
+	else{
+		cout << "Calibration failed. avg re projection error = " << totalAvgErr;
+	}
+}
+
+void undistortImages(){
+	// Undistort imagens
+	Mat imageUndistorted, aux, aux2;
+	for (int i = 0; i < imagePaths.size(); i++){
+		aux = originalImages[i];
+
+		undistort(aux, imageUndistorted, cameraMatrix, distCoeffs);
+		undistortedImages.push_back(imageUndistorted);
+
+		//distorce os centros dos pontos de controle tbm
+		vector<Point2f> centrosUndist;
+		undistortPoints(centrosOriginal[i], centrosUndist, cameraMatrix, distCoeffs, noArray(), cameraMatrix);
+		centrosUndistorted.push_back(centrosUndist);
+
+		if (MOSTRA_UNDISTORTED){
+			//coloca cruz para a imagem original 
+			desenhaCruz(aux, centrosOriginal[i][0].x, centrosOriginal[i][0].y, Scalar(255, 255, 255));
+			desenhaCruz(aux, centrosOriginal[i][9].x, centrosOriginal[i][9].y, Scalar(255, 255, 255));
+			desenhaCruz(aux, centrosOriginal[i][69].x, centrosOriginal[i][69].y, Scalar(255, 255, 255));
+			desenhaCruz(aux, centrosOriginal[i][60].x, centrosOriginal[i][60].y, Scalar(255, 255, 255));
+
+			resize(aux, aux, Size(512, 384));
+			mostraImagem(aux, "Image original");
+			moveWindow("Image original", 0, 0);
+
+			//coloca criz nos centros sem a distorcao
+			aux2 = imageUndistorted.clone();
+			for (int m = 0; m < nVertical; m++){
+				for (int n = 0; n < nHorizontal; n++){
+					desenhaCruz(aux2, centrosUndist[m*nHorizontal + n].x,
+						centrosUndist[m*nHorizontal + n].y, Scalar(255, 255, 255));
+				}
+			}
+			resize(aux2, aux2, Size(512, 384));
+			mostraImagem(aux2, "Image undistorted");
+			moveWindow("Image undistorted", 530, 0);
+			waitKey(0);
+		}
+
+		//nao sei pq nao funciona se nao redimensionar a imageUndistorted
+		resize(imageUndistorted, imageUndistorted, Size(512, 384));
+
+	}
+	cv::destroyWindow("Image original");
+	cv::destroyWindow("Image undistorted");
+}
+
+void frontoParalelo(){
+	// Input Quadilateral or Image plane coordinates
+	Point2f inputQuad[4];
+	// Output Quadilateral or World plane coordinates
+	Point2f outputQuad[4];
+
+	// Lambda Matrix
+	Mat perspectiveTransformMatrix;// (2, 4, CV_32FC1);
+	//Input and Output Image;
+	Mat outputImage, inputImage;
+
+	float div = 10;
+	float d1w, d1h; //distancia entre cantos horizontal e vertical
+	float offsetx = 60, offsety = 90;
+	distanciaCentro = -1;
+
+	for (int i = 0; i < imagePaths.size(); i++)
+	{
+		inputImage = undistortedImages[i].clone();
+		//perspectiveTransformMatrix = Mat::zeros(inputImage.rows, inputImage.cols, inputImage.type());
+
+		// The 4 points that select quadilateral on the inputImage , from top-left in clockwise order
+		// These four pts are the sides of the rect box used as inputImage 
+		inputQuad[0] = centrosUndistorted[i][0];
+		inputQuad[1] = centrosUndistorted[i][9];
+		inputQuad[2] = centrosUndistorted[i][69];
+		inputQuad[3] = centrosUndistorted[i][60];
+
+		// The 4 points where the mapping is to be done , from top-left in clockwise order
+
+		/*outputQuad[0] = Point2f(inputImage.cols / div, inputImage.rows / div);
+		outputQuad[1] = Point2f((inputImage.cols * (div - 1)) / div, inputImage.rows / div);
+		outputQuad[2] = Point2f((inputImage.cols * (div - 1)) / div, (inputImage.rows * (div - 1)) / div);
+		outputQuad[3] = Point2f(inputImage.cols / div, (inputImage.rows * (div - 1)) / div);*/
+
+		//achar os 4 pontos de forma correta (ainda nao foi)
+		outputQuad[0] = Point2f(offsetx, offsety);
+		outputQuad[1] = Point2f(inputImage.cols - offsetx, offsety);
+		outputQuad[2] = Point2f(inputImage.cols - offsetx, inputImage.rows - offsety);
+		outputQuad[3] = Point2f(offsetx, inputImage.rows - offsety);
+
+
+		// Get the Perspective Transform Matrix i.e. lambda 
+		perspectiveTransformMatrix = getPerspectiveTransform(inputQuad, outputQuad);
+
+		// Apply the Perspective Transform just found to the src image
+		warpPerspective(inputImage, outputImage, perspectiveTransformMatrix, Size(inputImage.cols, inputImage.rows)/*outputImage.size()*/);
+
+		frontoParallelImages.push_back(outputImage);
+
+		//salvar homografia
+		homografias.push_back(perspectiveTransformMatrix);
+
+		//calcular os centros no plano fronto paralelo tbm
+		vector<Point2f> centrosNoFrontoParalelo;
+		perspectiveTransform(centrosUndistorted[i], centrosNoFrontoParalelo, perspectiveTransformMatrix);
+		centrosFrontoParallel.push_back(centrosNoFrontoParalelo);
+
+		if (i == 1){
+			distanciaCentro = norm(centrosUndistorted[i][1] - centrosUndistorted[i][0]);
+		}
+
+		if (MOSTRA_PERSPECTIVE_TRANSFORM)
+		{
+			//desenhaCentros(inputImage, centrosUndistorted[i]);
+			resize(inputImage, inputImage, Size(512, 384));
+			mostraImagem(inputImage, "Image undistorted 2");
+			moveWindow("Image undistorted 2", 0, 0);
+
+			//desenhaCentros(outputImage, centrosFrontoParallel[i]);
+			resize(outputImage, outputImage, Size(512, 384));
+			mostraImagem(outputImage, "Image fronto parallel");
+			moveWindow("Image fronto parallel", 530, 0);
+
+			cout << "Perspective matrix " << endl;
+			print(perspectiveTransformMatrix, 3);
+
+			waitKey(0);
+
+		}// end mostra
+
+	}//end  for (int i = 0; i < imagePaths.size(); i++)
+	cv::destroyWindow("Image undistorted 2");
+	cv::destroyWindow("Image fronto parallel");
+
+}// end void frontoParalelo()
+
+void findCentrosFrontoParalelo(){
+	Mat aux;
+	vector<Point2f> novosCentros;
+
+	for (int i = 0; i < frontoParallelImages.size(); i++){
+		aux = frontoParallelImages[i].clone();
+
+		//acha centros na imagem frontal
+		if (AS_ANKUR)
+			novosCentros = computeCorrelationSSD(aux, centrosFrontoParallel[i]);
+		else
+			novosCentros = fitEllipse(aux, centrosFrontoParallel[i]);
+
+	}
+}
+
+//como no ankur (matlab)
+vector<Point2f> computeCorrelationSSD(Mat image, vector<Point2f> centros){
+	vector<Point2f> novosCentros;
+	Mat circulo = imread("imagens/gcircleFilter.bmp");
+
+	int dist = 97;// (int)distanciaCentro;
+
+	resize(circulo, circulo, Size(dist, dist));
+	cvtColor(circulo, circulo, CV_BGR2GRAY);
+	//circulo = 255 - circulo;
+
+	Mat aux;
+	// para cada ponto de controle (centro)
+	cout << "Procurando pontos de controle ..." << endl;
+	for (int v = 0; v < nVertical; v++){
+		for (int h = 0; h < nHorizontal; h++){
+
+			aux = image.clone();
+			cvtColor(aux, aux, CV_BGR2GRAY);
+
+			//verifica limites da imagem
+			int roi_x = centros[v*nHorizontal + h].x - dist;
+			int roi_w = dist * 2;
+			if (roi_x < 0){
+				roi_w += roi_x;
+				roi_x = 0;
+			}
+			if (roi_x + roi_w >= image.cols - 1){
+				roi_w = image.cols - roi_x;
+			}
+			int roi_y = centros[v*nHorizontal + h].y - dist;
+			int roi_h = dist * 2;
+			if (roi_y < 0){
+				roi_h += roi_y;
+				roi_y = 0;
+			}
+			if (roi_y + roi_h >= image.rows - 1){
+				roi_h = image.rows - roi_y;
+			}
+
+			//desenhaRetangulo(aux, Point2f(roi_x, roi_y), Point2f(roi_x + roi_w, roi_y + roi_h), Scalar(255, 255, 255));
+
+			Mat ssd(roi_h, roi_w, CV_64F, 999999999999);
+			double* p = ssd.ptr<double>(10);
+			for (int i = 0; i < 20; i++){
+				p[i] = 50;
+			}
+			mostraImagem(ssd, "ssd");
+			cv::waitKey(0);
+
+
+			float menor = 999999999999;
+			Point2f menorPosition;
+			int a = 1;
+			//itera na roi
+			for (int j = roi_y; j < roi_h + roi_y; j++){
+				for (int i = roi_x; i < roi_w + roi_x; i++){
+
+					float sum = 0;
+					if (i + dist > roi_w + roi_x || j + dist > roi_h + roi_y) break;
+
+					//itera na subroi
+					uchar * p1, *p2;
+					for (int y = j; y < j + dist; y++){
+						p1 = aux.ptr<uchar>(y);
+						p2 = circulo.ptr<uchar>(y);
+						for (int x = i; x < i + dist; x++){
+							//sum += pow(aux.at<uchar>(y, x) - circulo.at<uchar>(y - j, x - i), 2);
+							sum += pow(p1[x] - p2[x - i], 2);
+						}
+					}
+					if (a == 1) {
+						menor = sum;
+						a = 0;
+					}
+					if (sum < menor){
+						menor = sum;
+						menorPosition.x = i;
+						menorPosition.y = j;
+					}
+					//ssd.at<double>(j - roi_y, i - roi_x) = sum;
+				}
+			}
+
+			//desenhaCruz(image, menorPosition.x + dist / 2, menorPosition.y + dist / 2, Scalar(255, 255, 255));
+			//mostraImagem(image, "Novos centros");
+			//waitKey(1);
+
+			novosCentros.push_back(Point2f(menorPosition.x + dist / 2, menorPosition.y + dist / 2));
+			cout << " ... achou " << v << "," << h << " ... " << endl;
+		} //for - centros
+	}//for - centros
+
+	desenhaCentros(image, novosCentros);
+	mostraImagem(image, "Novos centros");
+	cv::waitKey(0);
+	cv::destroyWindow("Novos centros");
+
+	return novosCentros;
+}
+
+//como no praksh
+vector<Point2f> fitEllipse(Mat image, vector<Point2f> centros){
+	vector<Point2f> novosCentros;
+
+	return novosCentros;
+}
+
+void desenhaCentros(Mat img, vector<Point2f> centros){
+	for (int v = 0; v < nVertical; v++){
+		for (int h = 0; h < nHorizontal; h++){
+			desenhaCruz(img, centros[v*nHorizontal + h].x,
+				centros[v*nHorizontal + h].y, Scalar(0, 255, 255));
+		}
+	}
+}
+
+// end - Sasha Nicolas
