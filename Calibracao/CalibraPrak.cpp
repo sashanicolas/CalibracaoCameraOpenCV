@@ -48,7 +48,7 @@ using namespace std;
 #define MOSTRA_UNDISTORTED 0
 #define MOSTRA_UNPROJECTED 0
 #define MOSTRA_PERSPECTIVE_TRANSFORM 0
-#define AS_ANKUR 1
+#define AS_ANKUR 0
 
 // variaveis
 vector<string> imagePaths;
@@ -100,6 +100,7 @@ vector<Point2f> fitEllipse(Mat image, vector<Point2f>);
 void desenhaCentros(Mat img, vector<Point2f> centros);
 void proj_dist_centros();
 void desenhaCentros(Mat img, vector<Point2f> centros, Scalar cor);
+void showHistogram(Mat b_hist, int histSize);
 
 int main(){
 
@@ -140,18 +141,19 @@ int main(){
 	// Calibracao inicial
 	calibraCamera();
 		
-	for (int iter = 0; iter < 5; iter++){
+	for (int iter = 0; iter < 60; iter++){
+		cout << "iteracao " << iter << endl;
 		undistortImages();
 		frontoParalelo();
 		findCentrosFrontoParalelo();
 		proj_dist_centros();
 		calibraCamera();
 		
-		if (iter == 4) break;
+		/*if (iter == 4) break;
 		cout << "\nTerminado? s ou n";
 		char a;
 		cin >> a;
-		if (a == 's') break;
+		if (a == 's') break;*/
 	}
 	
 	cout << "\nTerminado.";
@@ -662,13 +664,13 @@ void calibraCamera(){
 		cout << endl << "Coeficientes de Distorcao " << endl;
 		print(distCoeffs, 2);
 
-		for (int i = 0; i < rvecs.size(); i++){
+		/*for (int i = 0; i < rvecs.size(); i++){
 			cout << endl << "R-" << i << endl;
 			print(rvecs[i], 2);
 			cout << endl << "t-" << i << endl;
 			print(tvecs[i], 2);
 			cout << endl;
-		}
+		}*/
 	}
 	else{
 		cout << "Calibration failed. avg re projection error = " << totalAvgErr;
@@ -1018,10 +1020,10 @@ vector<Point2f> computeCorrelationSSD(Mat image, vector<Point2f> centros){
 		} //for - centros
 	}//for - centros
 	cout << "     ... end "<< endl;
-	desenhaCentros(image, novosCentros);
+	/*desenhaCentros(image, novosCentros);
 	mostraImagem(image, "Novos centros");
 	cv::waitKey(0);
-	cv::destroyWindow("Novos centros");
+	cv::destroyWindow("Novos centros");*/
 
 	return novosCentros;
 }
@@ -1029,6 +1031,158 @@ vector<Point2f> computeCorrelationSSD(Mat image, vector<Point2f> centros){
 //como no praksh
 vector<Point2f> fitEllipse(Mat image, vector<Point2f> centros){
 	vector<Point2f> novosCentros;
+	Mat aux;
+	int dist = (int)distanciaCentro;
+	Mat roi;
+	cout << "Procurando pontos de controle ..." << endl;
+	for (int v = 0; v < nVertical; v++){
+		for (int h = 0; h < nHorizontal; h++){
+			aux = image.clone();
+			cvtColor(aux, aux, CV_BGR2GRAY);
+
+			//verifica limites da imagem
+			int roi_x = centros[v*nHorizontal + h].x - (dist / 2 + 20);
+			int roi_w = (dist / 2 + 20) * 2;
+			if (roi_x < 0){
+				roi_w += roi_x;
+				roi_x = 0;
+			}
+			if (roi_x + roi_w >= image.cols - 1){
+				roi_w = image.cols - roi_x;
+			}
+			int roi_y = centros[v*nHorizontal + h].y - (dist / 2 + 20);
+			int roi_h = (dist / 2 + 20) * 2;
+			if (roi_y < 0){
+				roi_h += roi_y;
+				roi_y = 0;
+			}
+			if (roi_y + roi_h >= image.rows - 1){
+				roi_h = image.rows - roi_y;
+			}
+			
+			roi = aux(Rect(roi_x, roi_y, roi_w, roi_h));
+
+			/*Mat hist;
+			float range[] = { 0, 256 };
+			int histSize = 256;
+			const float* histRange = { range };
+			calcHist(&roi, 1, 0, Mat(), hist, 1, &histSize, &histRange);
+			showHistogram(hist, histSize);*/
+
+			// threshold adaptativo
+
+			float media=0;
+			int cont = 0;
+
+			//itera na roi acha media inicial			
+			for (int j = roi_y; j < roi_h + roi_y; j++){
+				for (int i = roi_x; i < roi_w + roi_x; i++){
+					media += roi.at<uchar>(j - roi_y, i - roi_x);					
+				}
+			}
+			media /= (float)roi_w * roi_h;
+			//cout << "media " << media << endl;
+
+			float m = 0;
+			cont = 0;
+			//itera na roi acha media inicial			
+			for (int j = roi_y; j < roi_h + roi_y; j++){
+				for (int i = roi_x; i < roi_w + roi_x; i++){
+					if (roi.at<uchar>(j - roi_y, i - roi_x)<=media){
+						m += roi.at<uchar>(j - roi_y, i - roi_x);
+						cont++;
+					}						
+				}
+			}
+			m /= (float)cont;
+			//cout << "m " << m << endl;
+
+			float t = m, m1, m2;
+			int passo = 10, cont1, cont2;
+			while (passo--){
+				//itera na roi acha media inicial			
+				//calcula m1 e m2
+				cont1 = 0;
+				cont2 = 0;
+				m1 = 0;
+				m2 = 0;
+				for (int j = roi_y; j < roi_h + roi_y; j++){
+					for (int i = roi_x; i < roi_w + roi_x; i++){
+						if (roi.at<uchar>(j - roi_y, i - roi_x) <= media){
+							if (roi.at<uchar>(j - roi_y, i - roi_x) <= t){
+								m1 += roi.at<uchar>(j - roi_y, i - roi_x);
+								cont1++;
+							}
+							else{
+								m2 += roi.at<uchar>(j - roi_y, i - roi_x);
+								cont2++;
+							}
+						}
+					}
+				}
+				//cout << "diff " << abs(t - (m1 / cont1 + m2 / cont2) / 2) << endl;
+				t = (m1/cont1 + m2/cont2) / 2;
+				//cout << "t " << t << endl;
+			}
+
+			// aplica o threshold em roi
+			for (int j = roi_y; j < roi_h + roi_y; j++){
+				for (int i = roi_x; i < roi_w + roi_x; i++){
+					if (roi.at<uchar>(j - roi_y, i - roi_x) <= t){
+						roi.at<uchar>(j - roi_y, i - roi_x) = 0;
+					}else
+						roi.at<uchar>(j - roi_y, i - roi_x) = 255;
+				}
+			}
+
+			//detecta borda 
+			Mat threshold_output;
+			vector<vector<Point> > contours;
+			vector<Vec4i> hierarchy;
+			/// Detect edges using Threshold
+			threshold(roi, threshold_output, t, 255, THRESH_BINARY);
+			findContours(threshold_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+
+			//fit ellipse
+			vector<RotatedRect> minEllipse(contours.size());
+			for (int i = 0; i < contours.size(); i++)
+			{
+				if (contours[i].size() > 5)
+				{
+					minEllipse[i] = fitEllipse(Mat(contours[i]));
+				}
+			}
+
+			/// Draw contours + rotated rects + ellipses
+			Mat drawing = Mat::zeros(threshold_output.size(), CV_8UC3);
+			for (int i = 0; i< contours.size(); i++)
+			{
+				Scalar color = Scalar(255, 255, 255);
+				// contour
+				drawContours(drawing, contours, i, color, 1, 8, vector<Vec4i>(), 0, Point());
+				// ellipse
+				ellipse(drawing, minEllipse[i], color, 2, 8);	
+				//centro 
+				desenhaCruz(drawing, minEllipse[1].center.x, minEllipse[1].center.y, Scalar(0, 0, 255));
+			}
+			/// Show in a window
+
+			/*namedWindow("Contours", CV_WINDOW_AUTOSIZE);
+			imshow("Contours", drawing);
+
+			desenhaRetangulo(aux, Point2f(roi_x, roi_y), Point2f(roi_x + roi_w, roi_y + roi_h),Scalar(255,255,255));
+			mostraImagem(aux,"fit");
+			mostraImagem(roi, "roi");
+			waitKey(0);*/
+			
+			novosCentros.push_back(minEllipse[1].center + Point2f(roi_x, roi_y));
+		}
+	}
+	cout << "... achou ..." << endl;
+	/*desenhaCentros(image, novosCentros, Scalar(255,0,255));
+	mostraImagem(image, "Novos centros");
+	cv::waitKey(0);
+	cv::destroyWindow("Novos centros");*/
 
 	return novosCentros;
 }
@@ -1101,8 +1255,8 @@ void proj_dist_centros(){
 
 		centrosProjetados.push_back(centrosProj);
 
-		mostraImagem(aux, "Proj Centros");
-		waitKey(0);
+		/*mostraImagem(aux, "Proj Centros");
+		waitKey(1);*/
 	}
 	cv::destroyWindow("Proj Centros");
 
@@ -1139,10 +1293,36 @@ void proj_dist_centros(){
 		//atualiza o centro original para os novos centros, pq a calibracao vai rodar com eles
 		centrosOriginal[i] = centrosDist;
 
-		mostraImagem(aux, "Dist centros");
-		waitKey(0);
+		/*mostraImagem(aux, "Dist centros");
+		waitKey(1);*/
 	}
 	cv::destroyWindow("Dist centros");
+}
+
+void showHistogram(Mat b_hist, int histSize){
+	cout << b_hist << endl;
+
+	// Draw the histograms for roi
+	int hist_w = 512; int hist_h = 400;
+	int bin_w = cvRound((double)hist_w / histSize);
+
+	Mat histImage(hist_h, hist_w, CV_8UC3, Scalar(0, 0, 0));
+
+	/// Normalize the result to [ 0, histImage.rows ]
+	normalize(b_hist, b_hist, 0, histImage.rows, NORM_MINMAX, -1, Mat());
+
+	/// Draw for each channel
+	for (int i = 1; i < histSize; i++)
+	{
+		line(histImage, Point(bin_w*(i - 1), hist_h - cvRound(b_hist.at<float>(i - 1))),
+			Point(bin_w*(i), hist_h - cvRound(b_hist.at<float>(i))),
+			Scalar(255, 0, 0), 2, 8, 0);
+	}
+
+	/// Display
+	namedWindow("calcHist Demo", CV_WINDOW_AUTOSIZE);
+	imshow("calcHist Demo", histImage);
+	
 }
 
 // end - Sasha Nicolas
