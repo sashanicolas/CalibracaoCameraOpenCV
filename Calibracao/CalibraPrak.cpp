@@ -39,8 +39,9 @@ using namespace cv;
 using namespace std;
 
 //DEBUG e CONTROLE
-#define REDUZIR_IMAGENS 0
-#define SELECT_CORNERS_MOUSE 0
+#define USA_CIRCULOS_SASHA 0 // sasha = 1, ankur = 0
+#define REDUZIR_IMAGENS 0 //reduz imagens celular
+#define SELECT_CORNERS_MOUSE 0 
 #define MOSTRA_GRID 0
 #define MOSTRA_CADA_ROI 0
 #define MOSTRA_POSICAO_PC 0
@@ -48,7 +49,10 @@ using namespace std;
 #define MOSTRA_UNDISTORTED 0
 #define MOSTRA_UNPROJECTED 0
 #define MOSTRA_PERSPECTIVE_TRANSFORM 0
-#define AS_ANKUR 0
+#define AS_ANKUR 0 //ankur = 1, prak =0
+#define SHOW_NOVOS_CENTROS_SSD 1 //ankur
+#define SHOW_NOVOS_CENTROS_ELLIPSE 0 //prak
+
 
 // variaveis
 vector<string> imagePaths;
@@ -66,8 +70,7 @@ vector<vector<Point2f>> centrosProjetados;
 vector<vector<Point2f>> centrosDistorcidos;
 
 Mat cameraMatrix, distCoeffs;
-int flag = CV_CALIB_FIX_ASPECT_RATIO |
-CV_CALIB_FIX_PRINCIPAL_POINT | CV_CALIB_ZERO_TANGENT_DIST;
+int flag = CV_CALIB_FIX_ASPECT_RATIO | CV_CALIB_FIX_PRINCIPAL_POINT | CV_CALIB_ZERO_TANGENT_DIST;
 vector<Mat> rvecs, tvecs;
 float distanciaCentro;
 
@@ -105,9 +108,15 @@ void showHistogram(Mat b_hist, int histSize);
 int main(){
 
 	//configurar definicoes
-	nHorizontal = 10;
-	nVertical = 7;
-	distanceCP = 35; //milimetros
+	if (USA_CIRCULOS_SASHA){
+		nHorizontal = 9;
+		nVertical = 6;
+	}
+	else{
+		nHorizontal = 10;
+		nVertical = 7;
+	}
+	distanceCP = 23; //milimetros , 35
 
 	// Carregar Imagens
 	carregaImagens();
@@ -167,18 +176,21 @@ void carregaImagens(){
 	printf("Carregando Imagens\n");
 
 	//minhas imagens, celular nexus 5
-	/*imagePaths.push_back("imagens/circle1.jpg");
-	imagePaths.push_back("imagens/circle2.jpg");
-	imagePaths.push_back("imagens/circle3.jpg");
-	imagePaths.push_back("imagens/circle4.jpg");
-	imagePaths.push_back("imagens/circle5.jpg");*/
-
-	//imagens do Ankur
-	imagePaths.push_back("imagens/img1.bmp");
-	imagePaths.push_back("imagens/img2.bmp");
-	imagePaths.push_back("imagens/img3.bmp");
-	imagePaths.push_back("imagens/img4.bmp");
-	imagePaths.push_back("imagens/img5.bmp");
+	if (USA_CIRCULOS_SASHA){
+		imagePaths.push_back("imagens/circle1.jpg");
+		imagePaths.push_back("imagens/circle2.jpg");
+		imagePaths.push_back("imagens/circle3.jpg");
+		imagePaths.push_back("imagens/circle4.jpg");
+		imagePaths.push_back("imagens/circle8.jpg");
+	}
+	else{
+		//imagens do Ankur
+		imagePaths.push_back("imagens/img1.bmp");
+		imagePaths.push_back("imagens/img2.bmp");
+		imagePaths.push_back("imagens/img3.bmp");
+		imagePaths.push_back("imagens/img4.bmp");
+		imagePaths.push_back("imagens/img5.bmp");
+	}
 
 	for (int i = 0; i < imagePaths.size(); i++){
 		printf(" - Imagem %d...\n", i);
@@ -196,15 +208,20 @@ void cantosPredefinidos(){
 	vector<Point2d> v;
 
 	//Imagens Sasha
-	/*v.push_back(Point2d(234, 156));
-	v.push_back(Point2d(646, 120));
-	v.push_back(Point2d(665, 454));
-	v.push_back(Point2d(220, 454));*/
-	//Imagens Ankur
-	v.push_back(Point2d(198, 93));
-	v.push_back(Point2d(833, 99));
-	v.push_back(Point2d(839, 549));
-	v.push_back(Point2d(186, 545));
+	if (USA_CIRCULOS_SASHA){
+		v.push_back(Point2d(234, 156));
+		v.push_back(Point2d(646, 120));
+		v.push_back(Point2d(665, 454));
+		v.push_back(Point2d(220, 454));
+	}
+	else{
+		//Imagens Ankur
+		v.push_back(Point2d(198, 93));
+		v.push_back(Point2d(833, 99));
+		v.push_back(Point2d(839, 549));
+		v.push_back(Point2d(186, 545));
+	}
+	
 
 	pontosDoCanto.push_back(v);
 	aux = originalImages[0].clone();
@@ -217,15 +234,19 @@ void cantosPredefinidos(){
 
 	v.clear();
 	//imagens sasha
-	/*v.push_back(Point2d(184, 147));
-	v.push_back(Point2d(594, 161));
-	v.push_back(Point2d(642, 455));
-	v.push_back(Point2d(202, 507));*/
-	//imagen ankur
-	v.push_back(Point2d(258, 106));
-	v.push_back(Point2d(808, 148));
-	v.push_back(Point2d(801, 513));
-	v.push_back(Point2d(255, 547));
+	if (USA_CIRCULOS_SASHA){
+		v.push_back(Point2d(184, 147));
+		v.push_back(Point2d(594, 161));
+		v.push_back(Point2d(642, 455));
+		v.push_back(Point2d(202, 507));
+	}
+	else{
+		//imagen ankur
+		v.push_back(Point2d(258, 106));
+		v.push_back(Point2d(808, 148));
+		v.push_back(Point2d(801, 513));
+		v.push_back(Point2d(255, 547));
+	}
 
 	pontosDoCanto.push_back(v);
 	aux = originalImages[1].clone();
@@ -238,15 +259,19 @@ void cantosPredefinidos(){
 
 	v.clear();
 	//imagens sasha
-	/*v.push_back(Point2d(177, 173));
-	v.push_back(Point2d(592, 162));
-	v.push_back(Point2d(608, 458));
-	v.push_back(Point2d(196, 506));*/
+	if (USA_CIRCULOS_SASHA){
+		v.push_back(Point2d(177, 173));
+		v.push_back(Point2d(592, 162));
+		v.push_back(Point2d(608, 458));
+		v.push_back(Point2d(196, 506));
+	}
 	//imagens ankur
-	v.push_back(Point2d(261, 109));
-	v.push_back(Point2d(828, 95));
-	v.push_back(Point2d(803, 544));
-	v.push_back(Point2d(247, 474));
+	else{
+		v.push_back(Point2d(261, 109));
+		v.push_back(Point2d(828, 95));
+		v.push_back(Point2d(803, 544));
+		v.push_back(Point2d(247, 474));
+	}
 
 	pontosDoCanto.push_back(v);
 	aux = originalImages[2].clone();
@@ -259,15 +284,19 @@ void cantosPredefinidos(){
 
 	v.clear();
 	//imagens sasha
-	/*v.push_back(Point2d(184, 162));
-	v.push_back(Point2d(595, 116));
-	v.push_back(Point2d(610, 455));
-	v.push_back(Point2d(205, 450));*/
+	if (USA_CIRCULOS_SASHA){
+		v.push_back(Point2d(184, 162));
+		v.push_back(Point2d(595, 116));
+		v.push_back(Point2d(610, 455));
+		v.push_back(Point2d(205, 450));
+	}
 	//imagens ankur
-	v.push_back(Point2d(244, 126));
-	v.push_back(Point2d(867, 151));
-	v.push_back(Point2d(814, 533));
-	v.push_back(Point2d(264, 523));
+	else{
+		v.push_back(Point2d(244, 126));
+		v.push_back(Point2d(867, 151));
+		v.push_back(Point2d(814, 533));
+		v.push_back(Point2d(264, 523));
+	}
 
 	pontosDoCanto.push_back(v);
 	aux = originalImages[3].clone();
@@ -280,15 +309,19 @@ void cantosPredefinidos(){
 
 	v.clear();
 	//imagens sasha
-	/*v.push_back(Point2d(149, 134));
-	v.push_back(Point2d(644, 96));
-	v.push_back(Point2d(718, 483));
-	v.push_back(Point2d(124, 512));*/
+	if (USA_CIRCULOS_SASHA){
+		v.push_back(Point2d(149, 134));
+		v.push_back(Point2d(644, 96));
+		v.push_back(Point2d(718, 483));
+		v.push_back(Point2d(124, 512));
+	}
 	//imagens ankur
-	v.push_back(Point2d(272, 148));
-	v.push_back(Point2d(796, 157));
-	v.push_back(Point2d(828, 522));
-	v.push_back(Point2d(226, 514));
+	else{
+		v.push_back(Point2d(272, 148));
+		v.push_back(Point2d(796, 157));
+		v.push_back(Point2d(828, 522));
+		v.push_back(Point2d(226, 514));
+	}
 
 	pontosDoCanto.push_back(v);
 	aux = originalImages[4].clone();
@@ -755,9 +788,9 @@ void frontoParalelo(){
 		// The 4 points that select quadilateral on the inputImage , from top-left in clockwise order
 		// These four pts are the sides of the rect box used as inputImage 
 		inputQuad[0] = centrosUndistorted[i][0];
-		inputQuad[1] = centrosUndistorted[i][9];
-		inputQuad[2] = centrosUndistorted[i][69];
-		inputQuad[3] = centrosUndistorted[i][60];
+		inputQuad[1] = centrosUndistorted[i][nHorizontal-1];
+		inputQuad[2] = centrosUndistorted[i][nVertical*nHorizontal-1];
+		inputQuad[3] = centrosUndistorted[i][(nVertical-1)*nHorizontal];
 
 		// The 4 points where the mapping is to be done , from top-left in clockwise order
 
@@ -1020,10 +1053,12 @@ vector<Point2f> computeCorrelationSSD(Mat image, vector<Point2f> centros){
 		} //for - centros
 	}//for - centros
 	cout << "     ... end "<< endl;
-	/*desenhaCentros(image, novosCentros);
-	mostraImagem(image, "Novos centros");
-	cv::waitKey(0);
-	cv::destroyWindow("Novos centros");*/
+	if (SHOW_NOVOS_CENTROS_SSD){
+		desenhaCentros(image, novosCentros);
+		mostraImagem(image, "Novos centros");
+		cv::waitKey(0);
+		cv::destroyWindow("Novos centros");
+	}	
 
 	return novosCentros;
 }
@@ -1179,10 +1214,12 @@ vector<Point2f> fitEllipse(Mat image, vector<Point2f> centros){
 		}
 	}
 	cout << "... achou ..." << endl;
-	/*desenhaCentros(image, novosCentros, Scalar(255,0,255));
-	mostraImagem(image, "Novos centros");
-	cv::waitKey(0);
-	cv::destroyWindow("Novos centros");*/
+	if (SHOW_NOVOS_CENTROS_ELLIPSE){
+		desenhaCentros(image, novosCentros, Scalar(255, 0, 255));
+		mostraImagem(image, "Novos centros");
+		cv::waitKey(0);
+		cv::destroyWindow("Novos centros");
+	}	
 
 	return novosCentros;
 }
@@ -1255,8 +1292,8 @@ void proj_dist_centros(){
 
 		centrosProjetados.push_back(centrosProj);
 
-		/*mostraImagem(aux, "Proj Centros");
-		waitKey(1);*/
+		mostraImagem(aux, "Proj Centros");
+		waitKey(0);
 	}
 	cv::destroyWindow("Proj Centros");
 
@@ -1293,8 +1330,8 @@ void proj_dist_centros(){
 		//atualiza o centro original para os novos centros, pq a calibracao vai rodar com eles
 		centrosOriginal[i] = centrosDist;
 
-		/*mostraImagem(aux, "Dist centros");
-		waitKey(1);*/
+		mostraImagem(aux, "Dist centros");
+		waitKey(0);
 	}
 	cv::destroyWindow("Dist centros");
 }
