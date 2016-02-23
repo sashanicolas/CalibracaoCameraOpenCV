@@ -34,7 +34,6 @@
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
-
 using namespace cv;
 using namespace std;
 
@@ -516,11 +515,11 @@ void desenhaQuadrilatero(Mat img, Point p[4], Scalar c){
 void computeEllipse(Mat imgOriginal, int idImg){
 	//Arredonda os pontos do grid de float para inteiro
 	vector<Point2f> gridFloat = pontosGrid[idImg];
-	vector<Point2d> gridInt(gridFloat.size());
+	/*vector<Point2d> gridInt(gridFloat.size());
 	for (int i = 0; i < gridFloat.size(); i++){
 		gridInt[i].x = round(gridFloat[i].x);
 		gridInt[i].y = round(gridFloat[i].y);
-	}
+	}*/
 
 	Mat imgDoLoop;
 	double min, max, cweight, thresh;
@@ -1105,7 +1104,6 @@ vector<Point2f> fitEllipse(Mat image, vector<Point2f> centros){
 			showHistogram(hist, histSize);*/
 
 			// threshold adaptativo
-
 			float media=0;
 			int cont = 0;
 
@@ -1200,10 +1198,12 @@ vector<Point2f> fitEllipse(Mat image, vector<Point2f> centros){
 				//centro 
 				desenhaCruz(drawing, minEllipse[1].center.x, minEllipse[1].center.y, Scalar(0, 0, 255));
 			}
+			
 			/// Show in a window
-
 			/*namedWindow("Contours", CV_WINDOW_AUTOSIZE);
 			imshow("Contours", drawing);
+
+			cout << "centro x,y: "<< minEllipse[1].center.x <<", "<< minEllipse[1].center.y << endl;
 
 			desenhaRetangulo(aux, Point2f(roi_x, roi_y), Point2f(roi_x + roi_w, roi_y + roi_h),Scalar(255,255,255));
 			mostraImagem(aux,"fit");

@@ -42,5 +42,5 @@
   <!-- If true (non-zero) we show after calibration the undistorted images.-->
   <Show_UndistortedImage>1</Show_UndistortedImage>
  
-</Settings>
 </opencv_storage>
+</Settings>
